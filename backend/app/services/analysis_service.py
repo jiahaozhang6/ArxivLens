@@ -4,6 +4,7 @@ from sqlalchemy.orm import joinedload
 from app.database import SessionLocal
 from app.models import Analysis, AnalysisStatus, LLMProfile, Paper, Topic, utcnow
 from app.services.llm import analyze_with_profile
+from app.services.model_routing import run_with_profile_fallback
 from app.services.pdf import extract_arxiv_text
 
 
@@ -55,13 +56,6 @@ async def execute_analysis(analysis_id: int) -> bool:
             return False
         paper: Paper = analysis.paper
         topic: Topic | None = analysis.topic
-        profile: LLMProfile | None = analysis.llm_profile
-        if profile is None or not profile.enabled:
-            analysis.status = AnalysisStatus.failed
-            analysis.error_message = "The selected cloud model profile is missing or disabled"
-            analysis.completed_at = utcnow()
-            await session.commit()
-            return False
         analysis.status = AnalysisStatus.running
         await session.commit()
 
@@ -81,15 +75,23 @@ async def execute_analysis(analysis_id: int) -> bool:
                 full_text_warning = f"Full-text extraction failed; analyzed the abstract instead: {exc}"
 
         try:
-            payload, raw = await analyze_with_profile(
-                profile,
-                paper,
-                topic,
-                source_text,
-                actual_source_mode,
-                analysis.language,
+            routing = await run_with_profile_fallback(
+                session,
+                analysis.llm_profile_id,
+                lambda profile: analyze_with_profile(
+                    profile,
+                    paper,
+                    topic,
+                    source_text,
+                    actual_source_mode,
+                    analysis.language,
+                ),
+                honor_cooldown=analysis.run_id is not None,
             )
+            payload, raw = routing.value
             analysis.status = AnalysisStatus.completed
+            analysis.provider = routing.profile.provider
+            analysis.model = routing.profile.model
             analysis.source_mode = actual_source_mode
             analysis.summary = payload.summary
             analysis.research_question = payload.research_question
@@ -103,8 +105,9 @@ async def execute_analysis(analysis_id: int) -> bool:
             analysis.novelty_score = payload.novelty_score
             analysis.rigor_score = payload.rigor_score
             analysis.relevance_score = payload.relevance_score
-            analysis.raw_response = raw
-            analysis.error_message = full_text_warning
+            analysis.raw_response = {**raw, "_model_routing": routing.metadata}
+            warnings = [item for item in (full_text_warning, routing.warning) if item]
+            analysis.error_message = " ".join(warnings) or None
             analysis.completed_at = utcnow()
             await session.commit()
             return True

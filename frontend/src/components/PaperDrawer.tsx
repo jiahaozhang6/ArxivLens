@@ -41,6 +41,7 @@ function AnalysisView({ analysis }: { analysis: Analysis }) {
       <div className="analysis-meta">
         <span>{analysis.provider}</span>
         <span>{analysis.model}</span>
+        {analysis.model_routing?.fallback_used && <span className="fallback-chip">自动切换</span>}
         <span>{analysis.source_mode === 'tex' ? 'LaTeX 正文' : analysis.source_mode === 'html' ? 'HTML 正文' : analysis.source_mode === 'pdf' ? 'PDF 正文' : '摘要'}</span>
         <span>{formatDateTime(analysis.completed_at)}</span>
       </div>

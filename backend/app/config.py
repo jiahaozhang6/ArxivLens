@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     openalex_stale_cache_hours: int = 168
     http_timeout_seconds: float = 90.0
     llm_concurrency: int = 2
+    llm_fallback_max_profiles: int = 3
+    llm_profile_cooldown_seconds: int = 600
     pdf_max_pages: int = 30
     pdf_max_chars: int = 120_000
     network_time_enabled: bool = True

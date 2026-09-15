@@ -170,7 +170,7 @@ export function ModelsPage() {
   return (
     <div className="management-page">
       <div className="page-action-row">
-        <div><strong>{profilesQuery.data?.length ?? 0} 个云模型配置</strong><span>API 密钥由后端加密存储，前端不会回显</span></div>
+        <div><strong>{profilesQuery.data?.length ?? 0} 个云模型配置</strong><span>密钥加密存储；首选异常时自动尝试其他已启用模型</span></div>
         <button className="primary-button" onClick={openNew}><Plus size={16} /> 添加云模型</button>
       </div>
 

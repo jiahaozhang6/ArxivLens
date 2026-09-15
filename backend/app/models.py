@@ -266,6 +266,13 @@ class Analysis(Base):
     topic: Mapped[Topic | None] = relationship()
     llm_profile: Mapped[LLMProfile | None] = relationship(back_populates="analyses")
 
+    @property
+    def model_routing(self) -> dict | None:
+        if not isinstance(self.raw_response, dict):
+            return None
+        routing = self.raw_response.get("_model_routing")
+        return routing if isinstance(routing, dict) else None
+
 
 class ScheduleSettings(Base):
     __tablename__ = "schedule_settings"

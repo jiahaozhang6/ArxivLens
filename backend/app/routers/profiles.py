@@ -72,7 +72,13 @@ async def discover_models(
 
 @router.get("", response_model=list[LLMProfileOut])
 async def list_profiles(session: AsyncSession = Depends(get_session)):
-    profiles = await session.scalars(select(LLMProfile).order_by(LLMProfile.name))
+    profiles = await session.scalars(
+        select(LLMProfile).order_by(
+            LLMProfile.is_default.desc(),
+            LLMProfile.name,
+            LLMProfile.id,
+        )
+    )
     return [_serialize(profile) for profile in profiles]
 
 

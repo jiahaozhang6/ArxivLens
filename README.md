@@ -21,6 +21,7 @@ ArxivLens 是一个可在 Windows 和 Ubuntu 原生运行的 arXiv 论文订阅�
 - 结构化科研分析：摘要、研究问题、贡献、方法、实验、局限、阅读建议、相关性理由、关键词，以及相关性/新颖性/严谨性评分。
 - 国内云模型：DeepSeek、通义千问、智谱 GLM、Kimi、硅基流动。
 - 国外云模型：OpenAI、Anthropic Claude、Google Gemini，以及自定义 OpenAI-compatible 云 API。
+- 首选模型异常时自动切换：先尝试全局默认模型，再按名称尝试其他已启用配置；定时批处理会暂时冷却故障配置，避免每篇论文重复等待同一故障接口。
 - API 密钥和 SMTP 密码使用 `SECRET_KEY` 加密后存入数据库，前端不会回显。
 - 单管理员账号保护全部科研数据与 API：加盐密码哈希、HttpOnly 会话 Cookie、CSRF 校验、登录失败锁定和会话过期。
 - 每日计划、IANA 时区、多收件人邮件摘要、测试邮件和运行日志。
@@ -282,6 +283,8 @@ au:"Geoffrey Hinton" AND cat:cs.LG
 
 ```dotenv
 LLM_CONCURRENCY=2
+LLM_FALLBACK_MAX_PROFILES=3
+LLM_PROFILE_COOLDOWN_SECONDS=600
 PDF_MAX_PAGES=30
 PDF_MAX_CHARS=120000
 HTTP_TIMEOUT_SECONDS=90

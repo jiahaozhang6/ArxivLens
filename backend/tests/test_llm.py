@@ -21,6 +21,14 @@ def test_extract_json_object_accepts_markdown_fence():
     assert result["novelty_score"] == 7
 
 
+def test_extract_json_object_repairs_unescaped_latex_backslashes():
+    result = extract_json_object(
+        r'{"summary":"Uses \epsilon-greedy and \mathcal{L} objectives","novelty_score":7}'
+    )
+
+    assert result["summary"] == r"Uses \epsilon-greedy and \mathcal{L} objectives"
+
+
 def test_analysis_payload_normalizes_list_strings():
     payload = AnalysisPayload.model_validate(
         {

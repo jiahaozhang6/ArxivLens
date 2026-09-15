@@ -294,6 +294,7 @@ class AnalysisOut(ORMModel):
     novelty_score: float | None
     rigor_score: float | None
     relevance_score: float | None
+    model_routing: dict[str, Any] | None
     error_message: str | None
     created_at: datetime
     completed_at: datetime | None

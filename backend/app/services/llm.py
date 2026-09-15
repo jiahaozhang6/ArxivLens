@@ -130,7 +130,18 @@ def extract_json_object(text: str) -> dict[str, Any]:
     end = cleaned.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("LLM response did not contain a JSON object")
-    parsed = json.loads(cleaned[start : end + 1])
+    candidate = cleaned[start : end + 1]
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        # Models commonly place LaTeX such as \epsilon in JSON strings without
+        # escaping the backslash. Preserve valid JSON escapes and repair only
+        # backslashes that cannot start a JSON escape sequence.
+        repaired = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", candidate)
+        try:
+            parsed = json.loads(repaired, strict=False)
+        except json.JSONDecodeError as repaired_exc:
+            raise ValueError(f"LLM response contained invalid JSON: {exc}") from repaired_exc
     if not isinstance(parsed, dict):
         raise ValueError("LLM response JSON must be an object")
     return parsed

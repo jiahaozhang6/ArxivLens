@@ -60,6 +60,24 @@ export interface Analysis {
   novelty_score: number | null
   rigor_score: number | null
   relevance_score: number | null
+  model_routing: {
+    preferred_profile_id: number
+    fallback_used: boolean
+    used: {
+      profile_id: number
+      name: string
+      provider: string
+      model: string
+    }
+    attempts: Array<{
+      profile_id: number | null
+      name: string
+      provider: string
+      model: string
+      status: 'completed' | 'failed' | 'skipped'
+      error: string
+    }>
+  } | null
   error_message: string | null
   created_at: string
   completed_at: string | null

@@ -16,6 +16,7 @@ from app.schemas import (
 )
 from app.services.arxiv import fetch_papers
 from app.services.llm import suggest_topic_query
+from app.services.model_routing import run_with_profile_fallback
 
 router = APIRouter(
     prefix="/api/topics",
@@ -29,10 +30,10 @@ async def _validate_profile(session: AsyncSession, profile_id: int | None) -> No
         raise HTTPException(status_code=400, detail="LLM profile not found")
 
 
-async def _resolve_query_profile(
+async def _resolve_query_profile_id(
     session: AsyncSession,
     profile_id: int | None,
-) -> LLMProfile:
+) -> int:
     if profile_id is not None:
         profile = await session.get(LLMProfile, profile_id)
     else:
@@ -45,9 +46,7 @@ async def _resolve_query_profile(
         raise HTTPException(status_code=400, detail="请先添加并启用一个云模型")
     if not profile.enabled:
         raise HTTPException(status_code=400, detail="所选云模型当前未启用")
-    if not profile.encrypted_api_key:
-        raise HTTPException(status_code=400, detail="所选云模型缺少 API 密钥")
-    return profile
+    return profile.id
 
 
 @router.get("", response_model=list[TopicOut])
@@ -136,12 +135,18 @@ async def create_query_suggestion(
     payload: TopicQuerySuggestionRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    profile = await _resolve_query_profile(session, payload.llm_profile_id)
+    profile_id = await _resolve_query_profile_id(session, payload.llm_profile_id)
     try:
-        return await suggest_topic_query(
-            profile,
-            payload.research_focus,
-            payload.categories,
+        routing = await run_with_profile_fallback(
+            session,
+            profile_id,
+            lambda profile: suggest_topic_query(
+                profile,
+                payload.research_focus,
+                payload.categories,
+            ),
+            honor_cooldown=False,
         )
+        return routing.value
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

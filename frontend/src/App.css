@@ -902,6 +902,11 @@ textarea::placeholder {
   font-size: 11px;
 }
 
+.analysis-meta span.fallback-chip {
+  color: #075a50;
+  background: #dff4ef;
+}
+
 .score-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
