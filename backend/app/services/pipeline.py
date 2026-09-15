@@ -19,7 +19,7 @@ from app.models import (
 )
 from app.services.analysis_service import create_analysis, execute_analysis
 from app.services.arxiv import ArxivPaperData, fetch_papers_detailed
-from app.services.email_service import send_digest
+from app.services.email_service import send_digest, send_run_failure_alert
 from app.services.settings_service import get_default_profile_id, get_schedule_settings
 
 
@@ -50,7 +50,61 @@ async def _release_lease(lease: FileLock) -> None:
     await asyncio.to_thread(lease.release)
 
 
-async def _mark_interrupted_runs(session) -> int:
+async def _update_run_progress(
+    run_id: int,
+    stage: str,
+    current: int,
+    total: int,
+    percent: int,
+    **counters: int,
+) -> None:
+    async with SessionLocal() as session:
+        run = await session.get(RunLog, run_id)
+        if run is None:
+            return
+        run.progress_stage = stage
+        run.progress_current = max(current, 0)
+        run.progress_total = max(total, 0)
+        run.progress_percent = min(max(percent, 0), 100)
+        for name, value in counters.items():
+            setattr(run, name, value)
+        await session.commit()
+
+
+async def _notify_run_failure(run_id: int, trigger: str) -> int:
+    if trigger == "scheduled":
+        kind = "retrying"
+    elif trigger == "scheduled_retry_3":
+        kind = "final"
+    elif trigger == "manual":
+        kind = "failure"
+    else:
+        return 0
+
+    try:
+        sent = await send_run_failure_alert(run_id, kind=kind)
+    except Exception as exc:
+        async with SessionLocal() as session:
+            run = await session.get(RunLog, run_id)
+            if run is not None:
+                details = dict(run.error_details or {})
+                warnings = list(details.get("warnings", []))
+                warnings.append(f"Failure notification email could not be sent: {exc}")
+                details["warnings"] = warnings
+                run.error_details = details
+                await session.commit()
+        return 0
+
+    if sent:
+        async with SessionLocal() as session:
+            run = await session.get(RunLog, run_id)
+            if run is not None:
+                run.emails_sent += sent
+                await session.commit()
+    return sent
+
+
+async def _mark_interrupted_runs(session) -> list[tuple[int, str]]:
     runs = list(
         await session.scalars(
             select(RunLog).where(
@@ -59,6 +113,7 @@ async def _mark_interrupted_runs(session) -> int:
             )
         )
     )
+    recovered: list[tuple[int, str]] = []
     for run in runs:
         interrupted = await session.execute(
             update(Analysis)
@@ -73,11 +128,16 @@ async def _mark_interrupted_runs(session) -> int:
             )
         )
         run.status = RunStatus.failed
+        run.progress_stage = "failed"
         run.finished_at = utcnow()
         run.analyses_failed += int(interrupted.rowcount or 0)
         run.message = _INTERRUPTED_MESSAGE
-        run.error_details = {"errors": [_INTERRUPTED_MESSAGE]}
-    return len(runs)
+        run.error_details = {
+            "errors": [_INTERRUPTED_MESSAGE],
+            "retry_recommended": True,
+        }
+        recovered.append((run.id, run.trigger))
+    return recovered
 
 
 async def recover_interrupted_runs() -> int:
@@ -89,7 +149,9 @@ async def recover_interrupted_runs() -> int:
         async with SessionLocal() as session:
             recovered = await _mark_interrupted_runs(session)
             await session.commit()
-            return recovered
+        for run_id, trigger in recovered:
+            await _notify_run_failure(run_id, trigger)
+        return len(recovered)
     finally:
         await _release_lease(lease)
 
@@ -103,7 +165,12 @@ async def start_daily_run(trigger: str = "manual") -> int:
     try:
         async with SessionLocal() as session:
             await _mark_interrupted_runs(session)
-            run = RunLog(job_type="daily", trigger=trigger, status=RunStatus.running)
+            run = RunLog(
+                job_type="daily",
+                trigger=trigger,
+                status=RunStatus.running,
+                progress_stage="starting",
+            )
             session.add(run)
             try:
                 await session.commit()
@@ -224,9 +291,16 @@ async def _execute_daily_run(
     cached_topics = 0
     degraded_topics = 0
     retry_recommended = False
+    analyses_failed = 0
+    completed_ids: list[int] = []
+    emails_sent = 0
+    trigger = "manual"
 
     try:
         async with SessionLocal() as session:
+            run = await session.get(RunLog, run_id)
+            if run is not None:
+                trigger = run.trigger
             schedule = await get_schedule_settings(session)
             default_profile_id = await get_default_profile_id(session)
             statement = select(Topic).where(Topic.enabled.is_(True)).order_by(Topic.name)
@@ -234,6 +308,7 @@ async def _execute_daily_run(
                 statement = statement.where(Topic.id.in_(topic_ids))
             topics = list(await session.scalars(statement))
 
+        await _update_run_progress(run_id, "fetching", 0, len(topics), 5)
         for topic in topics:
             topics_processed += 1
             try:
@@ -256,6 +331,17 @@ async def _execute_daily_run(
                 papers_found += len(results)
             except Exception as exc:
                 errors.append(f"{topic.name}: arXiv fetch failed: {exc}")
+                retry_recommended = True
+                await _update_run_progress(
+                    run_id,
+                    "fetching",
+                    topics_processed,
+                    len(topics),
+                    5 + round(40 * topics_processed / max(len(topics), 1)),
+                    topics_processed=topics_processed,
+                    papers_found=papers_found,
+                    papers_new=papers_new,
+                )
                 continue
 
             async with SessionLocal() as session:
@@ -300,35 +386,85 @@ async def _execute_daily_run(
                             digest_analysis_ids.add(current_analysis_id)
                 await session.commit()
 
+            await _update_run_progress(
+                run_id,
+                "fetching",
+                topics_processed,
+                len(topics),
+                5 + round(40 * topics_processed / max(len(topics), 1)),
+                topics_processed=topics_processed,
+                papers_found=papers_found,
+                papers_new=papers_new,
+            )
+
+        await _update_run_progress(
+            run_id,
+            "analyzing",
+            0,
+            len(analysis_ids),
+            45 if analysis_ids else 90,
+            analyses_completed=0,
+            analyses_failed=0,
+        )
         semaphore = asyncio.Semaphore(max(settings.llm_concurrency, 1))
 
-        async def analyze_one(analysis_id: int) -> tuple[int, bool]:
+        async def analyze_one(analysis_id: int) -> tuple[int, bool, str | None]:
             async with semaphore:
-                return analysis_id, await execute_analysis(analysis_id)
+                try:
+                    return analysis_id, await execute_analysis(analysis_id), None
+                except Exception as exc:
+                    return analysis_id, False, str(exc)
 
-        results = await asyncio.gather(
-            *(analyze_one(analysis_id) for analysis_id in analysis_ids),
-            return_exceptions=True,
-        )
-        completed_ids: list[int] = []
-        analyses_failed = 0
-        for result in results:
-            if isinstance(result, Exception):
-                analyses_failed += 1
-                errors.append(f"Analysis worker failed: {result}")
-            elif result[1]:
-                completed_ids.append(result[0])
-            else:
-                analyses_failed += 1
+        analysis_tasks = [
+            asyncio.create_task(analyze_one(analysis_id), name=f"daily-analysis-{analysis_id}")
+            for analysis_id in analysis_ids
+        ]
+        try:
+            for completed_count, task in enumerate(
+                asyncio.as_completed(analysis_tasks),
+                start=1,
+            ):
+                analysis_id, succeeded, error = await task
+                if succeeded:
+                    completed_ids.append(analysis_id)
+                else:
+                    analyses_failed += 1
+                    retry_recommended = True
+                    if error:
+                        errors.append(f"Analysis {analysis_id} failed: {error}")
+                await _update_run_progress(
+                    run_id,
+                    "analyzing",
+                    completed_count,
+                    len(analysis_ids),
+                    45 + round(45 * completed_count / max(len(analysis_ids), 1)),
+                    analyses_completed=len(completed_ids),
+                    analyses_failed=analyses_failed,
+                )
+        except BaseException:
+            for task in analysis_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*analysis_tasks, return_exceptions=True)
+            raise
 
         digest_analysis_ids.update(completed_ids)
 
-        emails_sent = 0
         if send_email and digest_analysis_ids:
+            await _update_run_progress(run_id, "emailing", 0, 1, 92)
             try:
                 emails_sent = await send_digest(sorted(digest_analysis_ids))
             except Exception as exc:
                 errors.append(f"Email delivery failed: {exc}")
+                retry_recommended = True
+            await _update_run_progress(
+                run_id,
+                "emailing",
+                1,
+                1,
+                98,
+                emails_sent=emails_sent,
+            )
 
         message_parts = [
             f"Processed {topics_processed} topics and found {papers_found} paper matches."
@@ -342,7 +478,9 @@ async def _execute_daily_run(
         if degraded_topics:
             message_parts.append(f"Upstream discovery was degraded for {degraded_topics} topics.")
         if papers_found and not analysis_ids and not skipped_no_profile:
-            message_parts.append("All matching papers already had a current analysis; no LLM call was needed.")
+            message_parts.append(
+                "All matching papers already had a current analysis; no LLM call was needed."
+            )
         if emails_sent:
             message_parts.append("Email digest sent successfully.")
         status = (
@@ -354,6 +492,10 @@ async def _execute_daily_run(
             run = await session.get(RunLog, run_id)
             if run:
                 run.status = status
+                run.progress_stage = "completed"
+                run.progress_current = 1
+                run.progress_total = 1
+                run.progress_percent = 100
                 run.finished_at = utcnow()
                 run.topics_processed = topics_processed
                 run.papers_found = papers_found
@@ -367,22 +509,36 @@ async def _execute_daily_run(
                     details["errors"] = errors
                 if warnings:
                     details["warnings"] = warnings
-                if retry_recommended:
+                if retry_recommended or errors or analyses_failed:
                     details["retry_recommended"] = True
                 run.error_details = details or None
                 await session.commit()
+        if retry_recommended or errors or analyses_failed:
+            await _notify_run_failure(run_id, trigger)
+    except asyncio.CancelledError:
+        raise
     except Exception as exc:
         async with SessionLocal() as session:
             run = await session.get(RunLog, run_id)
             if run:
+                trigger = run.trigger
                 run.status = RunStatus.failed
+                run.progress_stage = "failed"
                 run.finished_at = utcnow()
                 run.topics_processed = topics_processed
                 run.papers_found = papers_found
                 run.papers_new = papers_new
+                run.analyses_completed = len(completed_ids)
+                run.analyses_failed = analyses_failed
+                run.emails_sent = emails_sent
                 run.message = "Daily pipeline failed"
-                run.error_details = {"errors": [*errors, str(exc)]}
+                run.error_details = {
+                    "errors": [*errors, str(exc)],
+                    "warnings": warnings,
+                    "retry_recommended": True,
+                }
                 await session.commit()
+        await _notify_run_failure(run_id, trigger)
 
 
 async def execute_daily_run(
@@ -407,11 +563,17 @@ async def execute_daily_run(
         async with SessionLocal() as session:
             run = await session.get(RunLog, run_id)
             if run and run.status == RunStatus.running:
+                trigger = run.trigger
                 run.status = RunStatus.failed
+                run.progress_stage = "failed"
                 run.finished_at = utcnow()
                 run.message = _INTERRUPTED_MESSAGE
-                run.error_details = {"errors": [_INTERRUPTED_MESSAGE]}
+                run.error_details = {
+                    "errors": [_INTERRUPTED_MESSAGE],
+                    "retry_recommended": True,
+                }
                 await session.commit()
+        await _notify_run_failure(run_id, trigger)
         raise
     finally:
         _executing_run_ids.discard(run_id)

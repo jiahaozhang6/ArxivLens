@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,15 +44,45 @@ def backup_sqlite(output: str | None = None) -> Path:
     return target_path
 
 
+async def wait_until_idle(timeout_seconds: float = 7200, poll_seconds: float = 5) -> None:
+    from sqlalchemy import func, select
+
+    from app.database import SessionLocal, close_db
+    from app.models import RunLog, RunStatus
+
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    try:
+        while True:
+            async with SessionLocal() as session:
+                running = await session.scalar(
+                    select(func.count(RunLog.id)).where(RunLog.status == RunStatus.running)
+                )
+            if not running:
+                return
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError(
+                    f"Timed out after {timeout_seconds:g} seconds waiting for active runs"
+                )
+            await asyncio.sleep(poll_seconds)
+    finally:
+        await close_db()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ArxivLens maintenance commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
     backup_parser = subparsers.add_parser("backup", help="Create a consistent SQLite backup")
     backup_parser.add_argument("--output", help="Destination file or directory")
+    wait_parser = subparsers.add_parser("wait-idle", help="Wait until no pipeline run is active")
+    wait_parser.add_argument("--timeout", type=float, default=7200)
+    wait_parser.add_argument("--poll", type=float, default=5)
     args = parser.parse_args()
 
     if args.command == "backup":
         print(backup_sqlite(args.output))
+    elif args.command == "wait-idle":
+        asyncio.run(wait_until_idle(args.timeout, args.poll))
+        print("No active pipeline runs")
 
 
 if __name__ == "__main__":

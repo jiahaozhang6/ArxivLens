@@ -2674,7 +2674,7 @@ textarea::placeholder {
 .run-table-head,
 .run-row summary {
   display: grid;
-  grid-template-columns: 130px 150px 70px 70px 150px 165px 70px;
+  grid-template-columns: 120px 150px 90px 170px 60px 145px 160px 55px;
   gap: 12px;
   align-items: center;
 }
@@ -2725,6 +2725,53 @@ textarea::placeholder {
 
 .run-status.running {
   color: var(--blue);
+}
+
+.run-progress {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.run-progress > span:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.run-progress strong {
+  color: #24313b;
+  font-size: 13px;
+}
+
+.run-progress small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-progress-track {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  background: #e5e9ed;
+  border-radius: 2px;
+}
+
+.run-progress-track > span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  border-radius: inherit;
+  transition: width 240ms ease;
+}
+
+.run-retry-note {
+  color: var(--amber);
+  font-weight: 700;
 }
 
 .run-detail {
@@ -2923,7 +2970,7 @@ textarea::placeholder {
 
   .run-table-head,
   .run-row summary {
-    min-width: 820px;
+    min-width: 990px;
   }
 
   .run-detail {

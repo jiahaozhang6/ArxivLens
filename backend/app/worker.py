@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -15,7 +16,8 @@ from app.services.settings_service import ensure_default_settings, get_schedule_
 
 logger = logging.getLogger("arxiv-digest-worker")
 _schedule_signature: tuple | None = None
-_SOURCE_RETRY_DELAYS_MINUTES = (30, 90, 180)
+_RETRY_DELAYS_MINUTES = (10, 30, 90)
+_active_pipeline_tasks: set[asyncio.Task[None]] = set()
 
 
 def _configure_logging() -> None:
@@ -73,14 +75,19 @@ def _scheduled_retry_trigger(
     if latest.status == RunStatus.running:
         return None
     details = latest.error_details or {}
-    if latest.status != RunStatus.partial or not details.get("retry_recommended"):
+    abnormal = (
+        latest.status == RunStatus.failed
+        or (latest.analyses_failed or 0) > 0
+        or bool(details.get("retry_recommended"))
+    )
+    if not abnormal:
         return None
     retries_completed = sum(run.trigger.startswith("scheduled_retry_") for run in todays_runs)
-    if retries_completed >= len(_SOURCE_RETRY_DELAYS_MINUTES):
+    if retries_completed >= len(_RETRY_DELAYS_MINUTES):
         return None
     retry_at = (latest.finished_at or latest.started_at) + timedelta(
         seconds=clock_offset_seconds,
-        minutes=_SOURCE_RETRY_DELAYS_MINUTES[retries_completed],
+        minutes=_RETRY_DELAYS_MINUTES[retries_completed],
     )
     if corrected_now < retry_at:
         return None
@@ -94,6 +101,34 @@ async def _scheduled_run(trigger: str = "scheduled") -> None:
         logger.info("Skipped scheduled run because another run is active")
     except Exception:
         logger.exception("Scheduled pipeline failed")
+
+
+def _launch_scheduled_run(trigger: str) -> None:
+    task = asyncio.create_task(_scheduled_run(trigger), name=f"arxiv-{trigger}")
+    _active_pipeline_tasks.add(task)
+    task.add_done_callback(_active_pipeline_tasks.discard)
+
+
+async def _wait_for_active_pipeline_tasks() -> None:
+    while _active_pipeline_tasks:
+        tasks = list(_active_pipeline_tasks)
+        logger.info("Waiting for %d active pipeline task(s) before shutdown", len(tasks))
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _install_shutdown_handlers(stop_event: asyncio.Event) -> None:
+    loop = asyncio.get_running_loop()
+
+    def request_shutdown() -> None:
+        if not stop_event.is_set():
+            logger.info("Shutdown requested; active pipeline work will finish first")
+            stop_event.set()
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(signum, request_shutdown)
+        except (NotImplementedError, RuntimeError):
+            signal.signal(signum, lambda *_args: loop.call_soon_threadsafe(request_shutdown))
 
 
 async def _check_schedule() -> None:
@@ -145,7 +180,7 @@ async def _check_schedule() -> None:
         last_scheduled_run.started_at if last_scheduled_run is not None else None,
         snapshot.offset_seconds,
     ):
-        await _scheduled_run()
+        _launch_scheduled_run("scheduled")
         return
     retry_trigger = _scheduled_retry_trigger(
         recent_scheduled_runs,
@@ -154,8 +189,8 @@ async def _check_schedule() -> None:
         snapshot.offset_seconds,
     )
     if retry_trigger is not None:
-        logger.warning("Retrying degraded scheduled discovery with %s", retry_trigger)
-        await _scheduled_run(retry_trigger)
+        logger.warning("Retrying abnormal scheduled run with %s", retry_trigger)
+        _launch_scheduled_run(retry_trigger)
 
 
 async def run_worker() -> None:
@@ -175,12 +210,16 @@ async def run_worker() -> None:
         max_instances=1,
         coalesce=True,
     )
-    await _check_schedule()
+    stop_event = asyncio.Event()
+    _install_shutdown_handlers(stop_event)
     scheduler.start()
+    await _check_schedule()
     logger.info("Worker started")
     try:
-        await asyncio.Event().wait()
+        await stop_event.wait()
     finally:
+        scheduler.pause()
+        await _wait_for_active_pipeline_tasks()
         scheduler.shutdown(wait=False)
         await close_db()
 

@@ -204,8 +204,16 @@ async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(
         emailed_ids.extend(analysis_ids)
         return 1
 
+    progress_stages: list[str] = []
+    original_update_progress = pipeline._update_run_progress
+
+    async def capture_progress(run_id: int, stage: str, current: int, total: int, percent: int, **counters):
+        progress_stages.append(stage)
+        await original_update_progress(run_id, stage, current, total, percent, **counters)
+
     monkeypatch.setattr(pipeline, "fetch_papers_detailed", fake_fetch)
     monkeypatch.setattr(pipeline, "send_digest", fake_send_digest)
+    monkeypatch.setattr(pipeline, "_update_run_progress", capture_progress)
 
     run_id = await pipeline.start_daily_run(trigger="scheduled")
     try:
@@ -218,6 +226,9 @@ async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(
             assert run.status == RunStatus.completed
             assert run.analyses_completed == 0
             assert run.emails_sent == 1
+            assert run.progress_stage == "completed"
+            assert run.progress_percent == 100
+            assert progress_stages == ["fetching", "fetching", "analyzing", "emailing", "emailing"]
     finally:
         async with SessionLocal() as session:
             await session.execute(delete(Paper).where(Paper.id == paper_id))
@@ -225,3 +236,46 @@ async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(
             await session.execute(delete(LLMProfile).where(LLMProfile.id == profile_id))
             await session.execute(delete(RunLog).where(RunLog.id == run_id))
             await session.commit()
+
+
+async def test_failure_alerts_are_sent_only_for_initial_manual_and_final_runs(monkeypatch):
+    await _clear_daily_runs()
+    sent: list[tuple[int, str]] = []
+
+    async def fake_alert(run_id: int, kind: str = "failure") -> int:
+        sent.append((run_id, kind))
+        return 2
+
+    monkeypatch.setattr(pipeline, "send_run_failure_alert", fake_alert)
+    async with SessionLocal() as session:
+        runs = [
+            RunLog(job_type="daily", trigger="scheduled", status=RunStatus.failed),
+            RunLog(job_type="daily", trigger="scheduled_retry_1", status=RunStatus.failed),
+            RunLog(job_type="daily", trigger="scheduled_retry_3", status=RunStatus.failed),
+            RunLog(job_type="daily", trigger="manual", status=RunStatus.failed),
+        ]
+        session.add_all(runs)
+        await session.commit()
+        run_ids = [run.id for run in runs]
+
+    assert await pipeline._notify_run_failure(run_ids[0], "scheduled") == 2
+    assert await pipeline._notify_run_failure(run_ids[1], "scheduled_retry_1") == 0
+    assert await pipeline._notify_run_failure(run_ids[2], "scheduled_retry_3") == 2
+    assert await pipeline._notify_run_failure(run_ids[3], "manual") == 2
+    assert sent == [
+        (run_ids[0], "retrying"),
+        (run_ids[2], "final"),
+        (run_ids[3], "failure"),
+    ]
+
+    async with SessionLocal() as session:
+        email_counts = list(
+            await session.scalars(
+                select(RunLog.emails_sent)
+                .where(RunLog.id.in_(run_ids))
+                .order_by(RunLog.id)
+            )
+        )
+        assert email_counts == [2, 0, 2, 2]
+        await session.execute(delete(RunLog).where(RunLog.id.in_(run_ids)))
+        await session.commit()

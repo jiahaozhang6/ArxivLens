@@ -246,6 +246,10 @@ export interface RunLog {
   job_type: string
   trigger: string
   status: 'running' | 'completed' | 'partial' | 'failed'
+  progress_stage: 'starting' | 'fetching' | 'analyzing' | 'emailing' | 'completed' | 'failed' | string
+  progress_current: number
+  progress_total: number
+  progress_percent: number
   started_at: string
   finished_at: string | null
   topics_processed: number
@@ -255,7 +259,7 @@ export interface RunLog {
   analyses_failed: number
   emails_sent: number
   message: string | null
-  error_details: { errors?: string[]; warnings?: string[] } | null
+  error_details: { errors?: string[]; warnings?: string[]; retry_recommended?: boolean } | null
 }
 
 export interface SystemStatus {

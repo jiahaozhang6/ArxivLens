@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from app.database import SessionLocal
-from app.models import Analysis, AnalysisStatus, EmailSettings
+from app.models import Analysis, AnalysisStatus, EmailSettings, RunLog
 from app.security import decrypt_secret
 from app.services.network_time import network_clock
 from app.services.settings_service import get_email_settings, get_schedule_settings
@@ -96,6 +96,85 @@ async def _deliver_digest(
     message.set_content(_build_digest_text(analyses, base_url))
     message.add_alternative(_build_digest_html(analyses, base_url), subtype="html")
     await _send_message(config, message)
+
+
+def _failure_notice(kind: str) -> tuple[str, str]:
+    if kind == "retrying":
+        return "计划任务异常，已安排自动重试", "系统将在今天自动重试，最多重试 3 次。"
+    if kind == "final":
+        return "计划任务重试后仍失败", "今天的 3 次自动重试已用完，请登录后台查看错误并处理。"
+    return "任务执行异常", "请登录后台查看错误并处理。"
+
+
+async def send_run_failure_alert(run_id: int, kind: str = "failure") -> int:
+    async with SessionLocal() as session:
+        email = await get_email_settings(session)
+        schedule = await get_schedule_settings(session)
+        run = await session.get(RunLog, run_id)
+        if run is None or not email.enabled or not email.recipients:
+            return 0
+        if not email.smtp_host or not email.from_email:
+            return 0
+
+        title, action = _failure_notice(kind)
+        timezone = ZoneInfo(schedule.timezone)
+        started = run.started_at.astimezone(timezone).strftime("%Y-%m-%d %H:%M:%S %Z")
+        finished = (
+            run.finished_at.astimezone(timezone).strftime("%Y-%m-%d %H:%M:%S %Z")
+            if run.finished_at
+            else "-"
+        )
+        details = run.error_details if isinstance(run.error_details, dict) else {}
+        errors = [str(item) for item in details.get("errors", [])][:10]
+        error_text = "\n".join(f"- {item}" for item in errors) or "- 未记录具体错误"
+        text = "\n".join(
+            [
+                title,
+                "",
+                action,
+                f"运行 ID: {run.id}",
+                f"触发方式: {run.trigger}",
+                f"开始时间: {started}",
+                f"结束时间: {finished}",
+                f"进度: {run.progress_percent}% ({run.progress_stage})",
+                f"主题: {run.topics_processed}",
+                f"论文: {run.papers_new} 新 / {run.papers_found} 命中",
+                f"解读: {run.analyses_completed} 成功 / {run.analyses_failed} 失败",
+                "",
+                "错误详情:",
+                error_text,
+                "",
+                f"后台: {schedule.public_base_url.rstrip('/')}/admin/runs",
+            ]
+        )
+        error_items = "".join(f"<li>{escape(item)}</li>" for item in errors)
+        html = f"""<!doctype html>
+        <html><body style="font-family:Arial,sans-serif;color:#1c2733;">
+          <main style="max-width:680px;margin:auto;padding:24px;">
+            <h1 style="font-size:22px;">{escape(title)}</h1>
+            <p>{escape(action)}</p>
+            <table style="border-collapse:collapse;line-height:1.8;">
+              <tr><td>运行 ID</td><td><strong>{run.id}</strong></td></tr>
+              <tr><td>触发方式</td><td>{escape(run.trigger)}</td></tr>
+              <tr><td>开始时间</td><td>{escape(started)}</td></tr>
+              <tr><td>结束时间</td><td>{escape(finished)}</td></tr>
+              <tr><td>进度</td><td>{run.progress_percent}% ({escape(run.progress_stage)})</td></tr>
+              <tr><td>论文</td><td>{run.papers_new} 新 / {run.papers_found} 命中</td></tr>
+              <tr><td>解读</td><td>{run.analyses_completed} 成功 / {run.analyses_failed} 失败</td></tr>
+            </table>
+            <h2 style="font-size:16px;">错误详情</h2>
+            <ul>{error_items or '<li>未记录具体错误</li>'}</ul>
+            <p><a href="{escape(schedule.public_base_url.rstrip('/'))}/admin/runs">打开任务后台</a></p>
+          </main>
+        </body></html>"""
+        message = EmailMessage()
+        message["Subject"] = f"{email.subject_prefix} {title}"
+        message["From"] = f"{email.from_name} <{email.from_email}>"
+        message["To"] = ", ".join(email.recipients)
+        message.set_content(text)
+        message.add_alternative(html, subtype="html")
+        await _send_message(email, message)
+        return len(email.recipients)
 
 
 async def send_digest(analysis_ids: list[int]) -> int:

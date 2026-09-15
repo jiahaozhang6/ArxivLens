@@ -327,6 +327,10 @@ class RunLogOut(ORMModel):
     job_type: str
     trigger: str
     status: RunStatus
+    progress_stage: str
+    progress_current: int
+    progress_total: int
+    progress_percent: int
     started_at: datetime
     finished_at: datetime | None
     topics_processed: int
