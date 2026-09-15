@@ -109,7 +109,7 @@ async def system_status(session: AsyncSession = Depends(get_session)):
     last_run = await session.scalar(select(RunLog).order_by(RunLog.started_at.desc()).limit(1))
     last_scheduled_run = await session.scalar(
         select(RunLog)
-        .where(RunLog.trigger == "scheduled")
+        .where(RunLog.trigger.like("scheduled%"))
         .order_by(RunLog.started_at.desc())
         .limit(1)
     )
