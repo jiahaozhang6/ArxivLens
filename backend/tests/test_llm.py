@@ -144,3 +144,24 @@ async def test_list_available_models_uses_anthropic_auth():
     assert models == [{"id": "claude-example", "label": "Claude Example"}]
     assert route.calls[0].request.headers["x-api-key"] == "secret-key"
     assert route.calls[0].request.headers["anthropic-version"] == "2023-06-01"
+
+
+def test_analysis_payload_normalizes_list_returned_for_prose_field():
+    payload = AnalysisPayload.model_validate(
+        {
+            "summary": "摘要",
+            "research_question": "问题",
+            "contributions": ["贡献"],
+            "methodology": "方法",
+            "experiments": ["实验一", "实验二"],
+            "limitations": ["限制"],
+            "reading_advice": "建议",
+            "relevance_reason": "相关",
+            "keywords": ["world model"],
+            "novelty_score": 8,
+            "rigor_score": 7,
+            "relevance_score": 9,
+        }
+    )
+
+    assert payload.experiments == "- 实验一\n- 实验二"

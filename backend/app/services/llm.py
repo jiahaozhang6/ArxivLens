@@ -30,6 +30,23 @@ class AnalysisPayload(BaseModel):
     rigor_score: float = Field(ge=0, le=10)
     relevance_score: float = Field(ge=0, le=10)
 
+    @field_validator(
+        "summary",
+        "research_question",
+        "methodology",
+        "experiments",
+        "reading_advice",
+        "relevance_reason",
+        mode="before",
+    )
+    @classmethod
+    def normalize_prose(cls, value: Any) -> Any:
+        if isinstance(value, (list, tuple)):
+            return "\n".join(
+                f"- {str(item).strip()}" for item in value if str(item).strip()
+            )
+        return value
+
     @field_validator("contributions", "limitations", "keywords", mode="before")
     @classmethod
     def normalize_lists(cls, value: Any) -> list[str]:
