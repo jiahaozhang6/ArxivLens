@@ -1,0 +1,21 @@
+{
+	default_sni paper.jiahaozhang.cn
+	auto_https disable_redirects
+	skip_install_trust
+}
+
+https://paper.jiahaozhang.cn {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8000
+}
+
+https://paper.jiahaozhang.cn:8888 {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8000
+}
+
+https://58.87.103.33:8888 {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8000
+	tls internal
+}

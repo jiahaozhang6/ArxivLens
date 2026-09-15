@@ -1,0 +1,19 @@
+[Unit]
+Description=ArxivLens daily arXiv scheduler
+Wants=network-online.target
+After=network-online.target arxiv-digest-api.service
+
+[Service]
+Type=simple
+User=@RUN_USER@
+Group=@RUN_GROUP@
+WorkingDirectory=@PROJECT_ROOT@/backend
+Environment=PYTHONUNBUFFERED=1
+ExecStart="@PROJECT_ROOT@/backend/.venv/bin/python" -m app.worker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

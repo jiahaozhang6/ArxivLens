@@ -1,0 +1,1 @@
+"""arXiv Research Digest backend."""

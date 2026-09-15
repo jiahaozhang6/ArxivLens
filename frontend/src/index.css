@@ -1,0 +1,81 @@
+:root {
+  font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  color: #20262d;
+  background: #f6f7f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --ink: #20262d;
+  --muted: #68717c;
+  --subtle: #8a939e;
+  --canvas: #f6f7f8;
+  --surface: #ffffff;
+  --surface-soft: #f0f2f4;
+  --border: #d9dee3;
+  --border-strong: #bcc5cd;
+  --accent: #b32632;
+  --accent-dark: #8e1c26;
+  --teal: #087f73;
+  --teal-soft: #e7f5f2;
+  --amber: #a96800;
+  --amber-soft: #fff3dc;
+  --danger: #bd2c2c;
+  --blue: #245f96;
+  --focus: #2f75ad;
+  --shadow: 0 12px 40px rgba(27, 35, 44, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--canvas);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--canvas);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+select,
+input[type="checkbox"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--focus) 28%, transparent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #f3c8cc;
+  color: var(--ink);
+}
+

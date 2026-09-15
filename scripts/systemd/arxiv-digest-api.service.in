@@ -1,0 +1,19 @@
+[Unit]
+Description=ArxivLens API and web interface
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=@RUN_USER@
+Group=@RUN_GROUP@
+WorkingDirectory=@PROJECT_ROOT@/backend
+Environment=PYTHONUNBUFFERED=1
+ExecStart="@PROJECT_ROOT@/backend/.venv/bin/python" -m app.api
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
