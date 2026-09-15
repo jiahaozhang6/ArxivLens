@@ -6,7 +6,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import SessionLocal, close_db, init_db
-from app.routers import auth, jobs, papers, profiles, settings, system, topics
+from app.routers import auth, chats, jobs, papers, profiles, settings, system, topics
+from app.services.paper_chat import recover_interrupted_chats
 from app.services.pipeline import recover_interrupted_runs
 from app.services.settings_service import ensure_default_settings
 
@@ -15,6 +16,7 @@ from app.services.settings_service import ensure_default_settings
 async def lifespan(_app: FastAPI):
     await init_db()
     await recover_interrupted_runs()
+    await recover_interrupted_chats()
     async with SessionLocal() as session:
         await ensure_default_settings(session)
     yield
@@ -38,6 +40,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(system.router)
 app.include_router(papers.router)
+app.include_router(chats.router)
 app.include_router(topics.router)
 app.include_router(profiles.router)
 app.include_router(settings.router)

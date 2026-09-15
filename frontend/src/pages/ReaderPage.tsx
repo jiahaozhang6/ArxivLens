@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   BookOpenCheck,
-  BrainCircuit,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -15,7 +15,6 @@ import {
   ThumbsUp,
 } from 'lucide-react'
 import { api, formatDate, localDateString, toQuery } from '../api'
-import { PaperDrawer } from '../components/PaperDrawer'
 import type { NetworkTimeStatus, Paper, PaperListResponse, Topic } from '../types'
 
 type ReadingMode = 'unread' | 'all' | 'starred' | 'relevant'
@@ -49,13 +48,11 @@ function ReaderPaper({
   paper,
   onOpen,
   onPatch,
-  onAnalyze,
   busy,
 }: {
   paper: Paper
   onOpen: () => void
   onPatch: (values: Record<string, unknown>) => void
-  onAnalyze: () => void
   busy: boolean
 }) {
   const analysis = paper.latest_analysis
@@ -107,9 +104,7 @@ function ReaderPaper({
       ) : (
         <div className="reader-abstract-preview">
           <p>{paper.abstract}</p>
-          <button className="secondary-button" onClick={onAnalyze} disabled={busy || analysis?.status === 'pending' || analysis?.status === 'running'}>
-            <BrainCircuit size={16} /> {analysis?.status === 'pending' || analysis?.status === 'running' ? '云模型解读中' : analysis?.status === 'failed' ? '重新解读' : '生成中文解读'}
-          </button>
+          <span className="reader-analysis-note">{analysis?.status === 'pending' || analysis?.status === 'running' ? '后台正在生成解读' : '暂无可用解读，请在后台管理端处理'}</span>
         </div>
       )}
 
@@ -129,13 +124,13 @@ function ReaderPaper({
 }
 
 export function ReaderPage() {
+  const navigate = useNavigate()
   const initialToday = localDateString()
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [mode, setMode] = useState<ReadingMode>('unread')
   const [topicId, setTopicId] = useState('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [selectedPaper, setSelectedPaper] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
@@ -174,18 +169,6 @@ export function ReaderPage() {
       api('/papers/' + id, { method: 'PATCH', body: JSON.stringify(values) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['papers'] })
-      if (selectedPaper) void queryClient.invalidateQueries({ queryKey: ['paper', selectedPaper] })
-    },
-    onError: (error: Error) => setNotice(error.message),
-  })
-  const analyzeMutation = useMutation({
-    mutationFn: (paperId: number) => api<{ analysis_id: number }>('/papers/' + paperId + '/actions/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ topic_id: null, llm_profile_id: null, source_mode: null }),
-    }),
-    onSuccess: (data) => {
-      setNotice(`解读任务 #${data.analysis_id} 已提交`)
-      void queryClient.invalidateQueries({ queryKey: ['papers'] })
     },
     onError: (error: Error) => setNotice(error.message),
   })
@@ -195,7 +178,6 @@ export function ReaderPage() {
   const progress = data?.stats.total ? Math.round(readCount / data.stats.total * 100) : 0
   const changeDay = (value: string) => {
     setSelectedDay(value)
-    setSelectedPaper(null)
   }
   const modes: Array<{ id: ReadingMode; label: string; count: number }> = [
     { id: 'unread', label: '待阅读', count: data?.stats.unread ?? 0 },
@@ -249,14 +231,13 @@ export function ReaderPage() {
           ) : papersQuery.isError ? (
             <div className="empty-state error-state"><strong>研究简报读取失败</strong><span>{(papersQuery.error as Error).message}</span></div>
           ) : data?.items.length ? (
-            data.items.map((paper) => <ReaderPaper key={paper.id} paper={paper} onOpen={() => setSelectedPaper(paper.id)} busy={patchMutation.isPending || analyzeMutation.isPending} onPatch={(values) => patchMutation.mutate({ id: paper.id, values })} onAnalyze={() => analyzeMutation.mutate(paper.id)} />)
+            data.items.map((paper) => <ReaderPaper key={paper.id} paper={paper} onOpen={() => navigate(`/paper/${paper.id}`)} busy={patchMutation.isPending} onPatch={(values) => patchMutation.mutate({ id: paper.id, values })} />)
           ) : (
             <div className="reader-empty"><BookOpenCheck size={26} /><strong>{mode === 'unread' ? '这一天的论文已经读完' : '没有符合当前条件的论文'}</strong><span>切换日期、阅读队列或研究主题继续查看。</span></div>
           )}
         </section>
       </div>
 
-      <PaperDrawer paperId={selectedPaper} onClose={() => setSelectedPaper(null)} />
       {notice && <button className="toast" onClick={() => setNotice(null)}>{notice}</button>}
     </div>
   )

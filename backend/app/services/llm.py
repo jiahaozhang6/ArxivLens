@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -419,6 +420,167 @@ async def complete_with_profile(
     if protocol == "anthropic":
         return await _anthropic_completion(profile, api_key, system_prompt, user_prompt)
     return await _openai_compatible_completion(profile, api_key, system_prompt, user_prompt)
+
+
+def _content_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(
+            str(part.get("text", "")) if isinstance(part, dict) else str(part)
+            for part in value
+        )
+    return ""
+
+
+async def _openai_compatible_stream(
+    profile: LLMProfile,
+    api_key: str,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+) -> AsyncIterator[str]:
+    is_reasoning_model = profile.provider == "openai" and profile.model.startswith(
+        ("gpt-5", "o1", "o3", "o4")
+    )
+    payload: dict[str, Any] = {
+        "model": profile.model,
+        "messages": [{"role": "system", "content": system_prompt}, *messages],
+        "stream": True,
+    }
+    if is_reasoning_model:
+        payload["max_completion_tokens"] = max_tokens
+    else:
+        payload["max_tokens"] = max_tokens
+    if not is_reasoning_model and profile.provider != "moonshot":
+        payload["temperature"] = profile.temperature
+    payload = _merge_extra_body(payload, profile.extra_body or {})
+
+    settings = get_settings()
+    yielded = False
+    async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+        async with client.stream(
+            "POST",
+            _openai_endpoint(profile.base_url),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        ) as response:
+            if not response.is_success:
+                body = (await response.aread()).decode(errors="replace")[:1000]
+                raise LLMRequestError(f"HTTP {response.status_code}: {body}")
+            if "text/event-stream" not in response.headers.get("content-type", ""):
+                body = await response.aread()
+                try:
+                    data = json.loads(body)
+                except ValueError as exc:
+                    raise LLMRequestError("Cloud model returned an invalid streaming response") from exc
+                choices = data.get("choices") or []
+                text = _content_text(choices[0].get("message", {}).get("content")) if choices else ""
+                if not text:
+                    raise LLMRequestError("Cloud model returned an empty response")
+                yield text
+                return
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload_text = line[5:].strip()
+                if not payload_text or payload_text == "[DONE]":
+                    continue
+                try:
+                    event = json.loads(payload_text)
+                except ValueError:
+                    continue
+                if event.get("error"):
+                    raise LLMRequestError(str(event["error"])[:1000])
+                choices = event.get("choices") or []
+                if not choices:
+                    continue
+                text = _content_text(choices[0].get("delta", {}).get("content"))
+                if text:
+                    yielded = True
+                    yield text
+    if not yielded:
+        raise LLMRequestError("Cloud model returned an empty streamed response")
+
+
+async def _anthropic_stream(
+    profile: LLMProfile,
+    api_key: str,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    max_tokens: int,
+) -> AsyncIterator[str]:
+    payload = _merge_extra_body(
+        {
+            "model": profile.model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+            "stream": True,
+        },
+        profile.extra_body or {},
+    )
+    settings = get_settings()
+    yielded = False
+    async with httpx.AsyncClient(timeout=settings.http_timeout_seconds) as client:
+        async with client.stream(
+            "POST",
+            _anthropic_endpoint(profile.base_url),
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        ) as response:
+            if not response.is_success:
+                body = (await response.aread()).decode(errors="replace")[:1000]
+                raise LLMRequestError(f"HTTP {response.status_code}: {body}")
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload_text = line[5:].strip()
+                if not payload_text:
+                    continue
+                try:
+                    event = json.loads(payload_text)
+                except ValueError:
+                    continue
+                if event.get("type") == "error":
+                    raise LLMRequestError(str(event.get("error"))[:1000])
+                delta = event.get("delta") or {}
+                text = delta.get("text") if isinstance(delta, dict) else None
+                if text:
+                    yielded = True
+                    yield str(text)
+    if not yielded:
+        raise LLMRequestError("Anthropic returned an empty streamed response")
+
+
+async def stream_chat_with_profile(
+    profile: LLMProfile,
+    system_prompt: str,
+    messages: list[dict[str, str]],
+    max_tokens: int = 1600,
+) -> AsyncIterator[str]:
+    api_key = decrypt_secret(profile.encrypted_api_key)
+    if not api_key:
+        raise LLMRequestError("This cloud model profile has no API key")
+    output_limit = min(max(max_tokens, 128), profile.max_tokens)
+    protocol = getattr(profile.protocol, "value", profile.protocol)
+    try:
+        if protocol == "anthropic":
+            async for chunk in _anthropic_stream(
+                profile, api_key, system_prompt, messages, output_limit
+            ):
+                yield chunk
+            return
+        async for chunk in _openai_compatible_stream(
+            profile, api_key, system_prompt, messages, output_limit
+        ):
+            yield chunk
+    except httpx.HTTPError as exc:
+        raise LLMRequestError(f"Network error while streaming model output: {exc}") from exc
 
 
 def build_arxiv_query(categories: list[str], keywords: list[str]) -> str:

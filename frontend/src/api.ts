@@ -46,6 +46,64 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export async function streamApi(
+  path: string,
+  body: unknown,
+  onEvent: (event: string, data: Record<string, unknown>) => void,
+  signal?: AbortSignal,
+) {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  const csrfToken = readCookie(CSRF_COOKIE)
+  if (csrfToken) headers.set('X-CSRF-Token', csrfToken)
+  const response = await fetch(API_ROOT + path, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const payload = await response.json()
+      detail = typeof payload.detail === 'string' ? payload.detail : JSON.stringify(payload.detail ?? payload)
+    } catch {
+      detail = (await response.text()) || detail
+    }
+    if (response.status === 401) window.dispatchEvent(new Event('arxivlens:unauthorized'))
+    throw new ApiError(detail, response.status)
+  }
+  if (!response.body) throw new ApiError('浏览器未收到模型流式响应', 502)
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n')
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      let event = 'message'
+      const dataLines: string[] = []
+      block.split('\n').forEach((line) => {
+        if (line.startsWith('event:')) event = line.slice(6).trim()
+        if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+      })
+      if (dataLines.length) {
+        try {
+          onEvent(event, JSON.parse(dataLines.join('\n')) as Record<string, unknown>)
+        } catch {
+          throw new ApiError('模型流式响应格式错误', 502)
+        }
+      }
+      boundary = buffer.indexOf('\n\n')
+    }
+    if (done) break
+  }
+}
+
 export function toQuery(params: Record<string, string | number | boolean | null | undefined>) {
   const search = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {

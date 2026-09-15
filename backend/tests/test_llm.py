@@ -2,9 +2,11 @@ import httpx
 import pytest
 import respx
 
+from app.models import LLMProfile, ProtocolType
 from app.services.llm import (
     AnalysisPayload,
     _anthropic_models_endpoint,
+    _openai_compatible_stream,
     _openai_models_endpoint,
     _parse_model_options,
     build_arxiv_query,
@@ -144,6 +146,45 @@ async def test_list_available_models_uses_anthropic_auth():
     assert models == [{"id": "claude-example", "label": "Claude Example"}]
     assert route.calls[0].request.headers["x-api-key"] == "secret-key"
     assert route.calls[0].request.headers["anthropic-version"] == "2023-06-01"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_openai_compatible_stream_yields_text_deltas():
+    profile = LLMProfile(
+        name="stream-test",
+        provider="custom",
+        protocol=ProtocolType.openai_compatible,
+        base_url="https://stream.example.com/v1",
+        model="stream-model",
+        enabled=True,
+        max_tokens=1000,
+        supports_json_mode=True,
+    )
+    respx.post("https://stream.example.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"content":"第一段"}}]}\n\n'
+                'data: {"choices":[{"delta":{"content":"第二段"}}]}\n\n'
+                "data: [DONE]\n\n"
+            ),
+        )
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _openai_compatible_stream(
+            profile,
+            "secret",
+            "system",
+            [{"role": "user", "content": "question"}],
+            800,
+        )
+    ]
+
+    assert chunks == ["第一段", "第二段"]
 
 
 def test_analysis_payload_normalizes_list_returned_for_prose_field():

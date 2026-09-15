@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { api, formatDate, formatDateTime } from '../api'
+import { PaperChatPanel } from './PaperChatPanel'
 import type { Analysis, LLMProfile, Paper, Topic } from '../types'
 
 function ScoreMeter({ label, value }: { label: string; value: number | null }) {
@@ -230,6 +231,13 @@ export function PaperDrawer({ paperId, onClose }: { paperId: number | null; onCl
             <section className="abstract-section">
               <h3>Abstract</h3>
               <p>{paper.abstract}</p>
+            </section>
+
+            <section className="drawer-chat-section">
+              <div className="section-heading-row">
+                <div><h3>论文快速问答</h3><span>仅管理员后台可调用云模型</span></div>
+              </div>
+              <PaperChatPanel paperId={paper.id} />
             </section>
 
             <section className="analysis-section">

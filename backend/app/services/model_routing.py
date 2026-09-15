@@ -4,7 +4,7 @@ import asyncio
 import re
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
@@ -226,4 +226,77 @@ async def run_with_profile_fallback(
             preferred_profile_id=effective_preferred_id,
             attempts=attempts,
         )
+    raise AllModelProfilesFailed(attempts)
+
+
+async def stream_with_profile_fallback(
+    session: AsyncSession,
+    preferred_profile_id: int | None,
+    operation: Callable[[LLMProfile], AsyncIterator[str]],
+) -> AsyncIterator[dict[str, Any]]:
+    """Stream text while retaining the batch analyzer's health and fallback policy."""
+    profiles, effective_preferred_id, attempts = await _load_candidates(
+        session,
+        preferred_profile_id,
+    )
+    timeout = get_settings().llm_profile_timeout_seconds
+    for profile in profiles:
+        if reason := _cooldown_reason(profile.id):
+            attempts.append({**_profile_info(profile), "status": "skipped", "error": reason})
+            continue
+
+        iterator = operation(profile)
+        emitted = False
+        started = time.monotonic()
+        try:
+            while True:
+                remaining = timeout - (time.monotonic() - started) if timeout > 0 else None
+                if remaining is not None and remaining <= 0:
+                    raise TimeoutError
+                try:
+                    chunk = await asyncio.wait_for(anext(iterator), timeout=remaining)
+                except StopAsyncIteration:
+                    break
+                if not chunk:
+                    continue
+                if not emitted:
+                    yield {
+                        "type": "model",
+                        "profile": _profile_info(profile),
+                        "fallback_used": profile.id != effective_preferred_id,
+                    }
+                emitted = True
+                yield {"type": "delta", "text": chunk}
+            if not emitted:
+                raise LLMRequestError("Cloud model returned no streamed text")
+        except asyncio.CancelledError:
+            await iterator.aclose()
+            raise
+        except TimeoutError:
+            await iterator.aclose()
+            reason = f"单模型调用超过 {timeout:g} 秒，已切换备用模型"
+            _mark_profile_failed(profile.id, reason)
+            attempts.append({**_profile_info(profile), "status": "failed", "error": reason})
+            if emitted:
+                yield {"type": "reset", "reason": reason}
+            continue
+        except (LLMRequestError, ValueError) as exc:
+            await iterator.aclose()
+            reason = _error_text(exc)
+            _mark_profile_failed(profile.id, reason)
+            attempts.append({**_profile_info(profile), "status": "failed", "error": reason})
+            if emitted:
+                yield {"type": "reset", "reason": reason}
+            continue
+
+        _mark_profile_healthy(profile.id)
+        attempts.append({**_profile_info(profile), "status": "completed", "error": ""})
+        routing = RoutedModelResult(
+            value=None,
+            profile=profile,
+            preferred_profile_id=effective_preferred_id,
+            attempts=attempts,
+        )
+        yield {"type": "done", "routing": routing.metadata, "warning": routing.warning}
+        return
     raise AllModelProfilesFailed(attempts)

@@ -6,6 +6,7 @@ import { AuthPage } from './pages/AuthPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LibraryPage } from './pages/LibraryPage'
 import { ModelsPage } from './pages/ModelsPage'
+import { PaperReadingPage } from './pages/PaperReadingPage'
 import { ReaderPage } from './pages/ReaderPage'
 import { RunsPage } from './pages/RunsPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -21,6 +22,7 @@ export default function App() {
         <Route element={<AuthGate />}>
           <Route path="/" element={<ReaderShell />}>
             <Route index element={<ReaderPage />} />
+            <Route path="paper/:paperId" element={<PaperReadingPage />} />
           </Route>
 
           <Route path="admin" element={<AppShell />}>

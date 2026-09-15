@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     llm_fallback_max_profiles: int = 3
     llm_profile_cooldown_seconds: int = 600
     llm_profile_timeout_seconds: float = 180.0
+    chat_history_messages: int = 16
+    chat_history_max_chars: int = 24_000
+    chat_max_output_tokens: int = 1600
+    chat_concurrency: int = 1
+    chat_requests_per_minute: int = 8
     pdf_max_pages: int = 30
     pdf_max_chars: int = 120_000
     network_time_enabled: bool = True

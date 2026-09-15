@@ -117,6 +117,30 @@ export interface Paper {
   analyses?: Analysis[]
 }
 
+export interface PaperChatMessage {
+  id: number
+  role: 'user' | 'assistant'
+  content: string
+  status: 'streaming' | 'completed' | 'failed' | 'cancelled'
+  llm_profile_id: number | null
+  provider: string | null
+  model: string | null
+  model_routing: Analysis['model_routing']
+  error_message: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface PaperChatSession {
+  id: number
+  paper_id: number
+  title: string
+  preferred_llm_profile_id: number | null
+  created_at: string
+  updated_at: string
+  messages?: PaperChatMessage[]
+}
+
 export interface PaperListResponse {
   items: Paper[]
   page: number

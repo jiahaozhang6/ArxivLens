@@ -317,6 +317,48 @@ class BulkReanalyzeRequest(BaseModel):
         return list(dict.fromkeys(value))
 
 
+class PaperChatSessionCreate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    llm_profile_id: int | None = None
+
+
+class PaperChatMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+    llm_profile_id: int | None = None
+
+    @field_validator("content")
+    @classmethod
+    def normalize_chat_content(cls, value: str) -> str:
+        return value.strip()
+
+
+class PaperChatMessageOut(ORMModel):
+    id: int
+    role: str
+    content: str
+    status: str
+    llm_profile_id: int | None
+    provider: str | None
+    model: str | None
+    model_routing: dict[str, Any] | None
+    error_message: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class PaperChatSessionOut(ORMModel):
+    id: int
+    paper_id: int
+    title: str
+    preferred_llm_profile_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaperChatSessionDetail(PaperChatSessionOut):
+    messages: list[PaperChatMessageOut]
+
+
 class ManualRunRequest(BaseModel):
     topic_ids: list[int] | None = None
     send_email: bool = True

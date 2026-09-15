@@ -6,10 +6,10 @@ from app.models import Paper, TopicPaper
 from app.security import decrypt_secret
 
 
-async def _seed_paper(topic_id: int) -> int:
+async def _seed_paper(topic_id: int, arxiv_id: str = "2609.09999") -> int:
     async with SessionLocal() as session:
         paper = Paper(
-            arxiv_id="2609.09999",
+            arxiv_id=arxiv_id,
             version=1,
             title="Test-time scaling for scientific reasoning",
             abstract="A controlled study of inference-time compute for scientific question answering.",
@@ -20,8 +20,8 @@ async def _seed_paper(topic_id: int) -> int:
             updated_at=datetime(2026, 9, 12, 1, 0, tzinfo=UTC),
             first_seen_at=datetime(2026, 9, 12, 2, 0, tzinfo=UTC),
             last_seen_at=datetime(2026, 9, 12, 2, 0, tzinfo=UTC),
-            abs_url="https://arxiv.org/abs/2609.09999",
-            pdf_url="https://arxiv.org/pdf/2609.09999",
+            abs_url=f"https://arxiv.org/abs/{arxiv_id}",
+            pdf_url=f"https://arxiv.org/pdf/{arxiv_id}",
         )
         session.add(paper)
         await session.flush()
@@ -393,3 +393,85 @@ def test_historical_dates_and_bulk_paper_management(client, monkeypatch):
     )
     assert delete_response.status_code == 200
     assert client.get(f"/api/papers/{paper_ids[1]}").status_code == 404
+
+
+def test_paper_chat_streams_and_persists_messages(client, monkeypatch):
+    profile_response = client.post(
+        "/api/llm-profiles",
+        json={
+            "name": "Paper chat profile",
+            "provider": "custom",
+            "protocol": "openai_compatible",
+            "base_url": "https://chat.example.com/v1",
+            "model": "chat-model",
+            "api_key": "chat-secret",
+            "enabled": True,
+            "is_default": False,
+            "temperature": 0.2,
+            "max_tokens": 1200,
+            "supports_json_mode": True,
+            "extra_body": {},
+        },
+    )
+    profile_id = profile_response.json()["id"]
+    topic_response = client.post(
+        "/api/topics",
+        json={
+            "name": "Paper chat topic",
+            "query": 'cat:cs.AI AND all:"paper chat"',
+            "enabled": True,
+            "max_results": 5,
+            "lookback_days": 4,
+            "analyze_pdf": False,
+            "llm_profile_id": profile_id,
+        },
+    )
+    paper_id = asyncio.run(_seed_paper(topic_response.json()["id"], "2609.07777"))
+    session_response = client.post(
+        f"/api/papers/{paper_id}/chat/sessions",
+        json={"llm_profile_id": profile_id},
+    )
+    assert session_response.status_code == 201, session_response.text
+    chat_session_id = session_response.json()["id"]
+
+    async def fake_stream(_session, preferred_profile_id, _operation):
+        assert preferred_profile_id == profile_id
+        profile = {
+            "profile_id": profile_id,
+            "name": "Paper chat profile",
+            "provider": "custom",
+            "model": "chat-model",
+        }
+        yield {"type": "model", "profile": profile, "fallback_used": False}
+        yield {"type": "delta", "text": "核心创新是"}
+        yield {"type": "delta", "text": "测试时计算扩展。"}
+        yield {
+            "type": "done",
+            "routing": {
+                "preferred_profile_id": profile_id,
+                "used": profile,
+                "fallback_used": False,
+                "attempts": [{**profile, "status": "completed", "error": ""}],
+            },
+            "warning": None,
+        }
+
+    monkeypatch.setattr("app.routers.chats.stream_with_profile_fallback", fake_stream)
+    with client.stream(
+        "POST",
+        f"/api/papers/{paper_id}/chat/sessions/{chat_session_id}/messages/stream",
+        json={"content": "这篇论文的核心创新是什么？", "llm_profile_id": profile_id},
+    ) as response:
+        stream_text = response.read().decode()
+
+    assert response.status_code == 200
+    assert "event: delta" in stream_text
+    assert "测试时计算扩展" in stream_text
+    detail = client.get(
+        f"/api/papers/{paper_id}/chat/sessions/{chat_session_id}"
+    ).json()
+    assert detail["title"].startswith("这篇论文")
+    assert [message["role"] for message in detail["messages"]] == ["user", "assistant"]
+    assert detail["messages"][1]["status"] == "completed"
+    assert detail["messages"][1]["content"] == "核心创新是测试时计算扩展。"
+    assert detail["messages"][1]["model_routing"]["fallback_used"] is False

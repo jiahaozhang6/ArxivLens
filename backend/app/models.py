@@ -67,6 +67,13 @@ class AnalysisStatus(enum.StrEnum):
     failed = "failed"
 
 
+class ChatMessageStatus(enum.StrEnum):
+    streaming = "streaming"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class RunStatus(enum.StrEnum):
     running = "running"
     completed = "completed"
@@ -197,6 +204,9 @@ class Paper(Base):
     analyses: Mapped[list[Analysis]] = relationship(
         back_populates="paper", cascade="all, delete-orphan"
     )
+    chat_sessions: Mapped[list[PaperChatSession]] = relationship(
+        back_populates="paper", cascade="all, delete-orphan"
+    )
 
 
 class TopicPaper(Base):
@@ -272,6 +282,51 @@ class Analysis(Base):
             return None
         routing = self.raw_response.get("_model_routing")
         return routing if isinstance(routing, dict) else None
+
+
+class PaperChatSession(Base):
+    __tablename__ = "paper_chat_sessions"
+    __table_args__ = (Index("ix_paper_chat_sessions_paper_updated", "paper_id", "updated_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    paper_id: Mapped[int] = mapped_column(ForeignKey("papers.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(200), default="新对话")
+    preferred_llm_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("llm_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+    paper: Mapped[Paper] = relationship(back_populates="chat_sessions")
+    messages: Mapped[list[PaperChatMessage]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class PaperChatMessage(Base):
+    __tablename__ = "paper_chat_messages"
+    __table_args__ = (Index("ix_paper_chat_messages_session_created", "session_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("paper_chat_sessions.id", ondelete="CASCADE")
+    )
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[ChatMessageStatus] = mapped_column(
+        String(30), default=ChatMessageStatus.completed, index=True
+    )
+    llm_profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("llm_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    provider: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    model_routing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    session: Mapped[PaperChatSession] = relationship(back_populates="messages")
 
 
 class ScheduleSettings(Base):
