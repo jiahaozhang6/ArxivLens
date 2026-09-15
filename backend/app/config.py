@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     llm_concurrency: int = 2
     llm_fallback_max_profiles: int = 3
     llm_profile_cooldown_seconds: int = 600
+    llm_profile_timeout_seconds: float = 180.0
     pdf_max_pages: int = 30
     pdf_max_chars: int = 120_000
     network_time_enabled: bool = True

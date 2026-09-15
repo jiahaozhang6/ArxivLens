@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import threading
 import time
@@ -186,7 +187,20 @@ async def run_with_profile_fallback(
             )
             continue
         try:
-            value = await operation(profile)
+            timeout = get_settings().llm_profile_timeout_seconds
+            async with asyncio.timeout(timeout if timeout > 0 else None):
+                value = await operation(profile)
+        except TimeoutError:
+            reason = f"单模型调用超过 {timeout:g} 秒，已切换备用模型"
+            _mark_profile_failed(profile.id, reason)
+            attempts.append(
+                {
+                    **_profile_info(profile),
+                    "status": "failed",
+                    "error": reason,
+                }
+            )
+            continue
         except (LLMRequestError, ValueError) as exc:
             reason = _error_text(exc)
             _mark_profile_failed(profile.id, reason)

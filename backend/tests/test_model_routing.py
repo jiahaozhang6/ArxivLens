@@ -1,5 +1,8 @@
+import asyncio
+
 from sqlalchemy import delete
 
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import Analysis, AnalysisStatus, LLMProfile, Paper, ProtocolType, utcnow
 from app.services import analysis_service
@@ -26,6 +29,7 @@ def _payload() -> AnalysisPayload:
 
 async def test_execute_analysis_switches_to_default_profile(monkeypatch):
     reset_model_cooldowns()
+    monkeypatch.setattr(get_settings(), "llm_profile_timeout_seconds", 0.01)
     now = utcnow()
     suffix = str(now.timestamp())
     async with SessionLocal() as session:
@@ -82,7 +86,8 @@ async def test_execute_analysis_switches_to_default_profile(monkeypatch):
     async def fake_analyze(profile, *_args, **_kwargs):
         called_profile_ids.append(profile.id)
         if profile.id == preferred_id:
-            raise LLMRequestError("HTTP 429: rate limit")
+            await asyncio.sleep(0.05)
+            raise LLMRequestError("request should have timed out")
         return _payload(), {"summary": "备用模型完成解读"}
 
     monkeypatch.setattr(analysis_service, "analyze_with_profile", fake_analyze)
