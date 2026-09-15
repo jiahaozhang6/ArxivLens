@@ -44,8 +44,9 @@ const pageTitles: Record<string, string> = {
   '/admin/runs': '运行记录',
 }
 
-function scheduleStatusText(system: SystemStatus | undefined) {
-  if (!system?.schedule_enabled || system.schedule_state === 'disabled') return '\u6bcf\u65e5\u8ba1\u5212\u672a\u542f\u7528'
+function scheduleStatusText(system: SystemStatus | undefined, loading: boolean, failed: boolean) {
+  if (!system) return failed ? '计划状态读取失败' : loading ? '正在读取每日计划' : '计划状态暂不可用'
+  if (!system.schedule_enabled || system.schedule_state === 'disabled') return '\u6bcf\u65e5\u8ba1\u5212\u672a\u542f\u7528'
   if (system.schedule_state === 'pending') return '\u4eca\u65e5 ' + system.schedule_time + ' \u6267\u884c'
   if (system.schedule_state === 'starting') return '\u4eca\u65e5\u8ba1\u5212\u6b63\u5728\u542f\u52a8'
   if (system.schedule_state === 'running') return '\u4eca\u65e5\u8ba1\u5212\u6b63\u5728\u8fd0\u884c'
@@ -148,7 +149,7 @@ export function AppShell() {
           </div>
           <div className="status-line">
             <span className={'status-dot ' + (system?.schedule_enabled && system.schedule_state !== 'overdue' && system.schedule_state !== 'failed' ? 'online' : '')} />
-            <span>{scheduleStatusText(system)}</span>
+            <span>{scheduleStatusText(system, statusQuery.isPending, statusQuery.isError)}</span>
           </div>
           <div className="status-line muted">
             <CalendarClock size={14} />

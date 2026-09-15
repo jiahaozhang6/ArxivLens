@@ -38,7 +38,15 @@ export function ReaderShell() {
           <span><strong>ArxivLens</strong><small>科研阅读</small></span>
         </NavLink>
         <div className="reader-header-actions">
-          <span className="reader-last-sync">{system?.last_run ? `上次同步 ${formatDateTime(system.last_run.started_at)}` : '尚未同步'}</span>
+          <span className="reader-last-sync">
+            {system?.last_run
+              ? `上次同步 ${formatDateTime(system.last_run.started_at)}`
+              : statusQuery.isError
+                ? '同步状态读取失败'
+                : statusQuery.isPending
+                  ? '正在读取同步状态'
+                  : '尚未同步'}
+          </span>
           <NavLink to="/admin/daily" className="icon-text-button">
             <Settings2 size={16} />
             <span className="reader-action-label">后台管理</span>

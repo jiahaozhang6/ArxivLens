@@ -52,3 +52,20 @@ def test_schedule_state_reports_todays_run_result():
     )
 
     assert state == "completed"
+
+
+def test_schedule_state_accepts_database_string_status():
+    run = RunLog(
+        trigger="scheduled",
+        status="completed",
+        started_at=datetime(2026, 9, 15, 5, 0, tzinfo=UTC),
+    )
+
+    state, _ = _schedule_state(
+        _schedule(),
+        run,
+        datetime(2026, 9, 15, 6, 0, tzinfo=UTC),
+        0,
+    )
+
+    assert state == "completed"

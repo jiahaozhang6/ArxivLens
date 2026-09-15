@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import require_admin
 from app.database import get_session
-from app.models import LLMProfile, RunLog, Topic
+from app.models import LLMProfile, RunLog, RunStatus, Topic
 from app.schemas import RunLogOut
 from app.services.network_time import network_clock, next_daily_run_utc
 from app.services.settings_service import ensure_default_settings, get_default_profile_id
@@ -63,7 +63,9 @@ def _schedule_state(schedule, last_scheduled_run, current_time, clock_offset_sec
             seconds=clock_offset_seconds
         )
         if corrected_started_at.astimezone(timezone).date() == local_now.date():
-            return last_scheduled_run.status.value, scheduled_today.astimezone(UTC)
+            status = last_scheduled_run.status
+            status_value = status.value if isinstance(status, RunStatus) else str(status)
+            return status_value, scheduled_today.astimezone(UTC)
 
     if local_now < scheduled_today:
         return "pending", scheduled_today.astimezone(UTC)
