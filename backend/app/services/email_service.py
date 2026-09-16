@@ -10,7 +10,7 @@ from sqlalchemy.orm import joinedload
 from app.database import SessionLocal
 from app.models import Analysis, AnalysisStatus, EmailSettings, RunLog
 from app.security import decrypt_secret
-from app.services.network_time import network_clock
+from app.services.network_time import network_clock, next_daily_run_utc
 from app.services.settings_service import get_email_settings, get_schedule_settings
 
 
@@ -217,6 +217,75 @@ async def send_digest(analysis_ids: list[int]) -> int:
             schedule.public_base_url,
             f"{email.subject_prefix} {len(analyses)} papers",
         )
+        return len(email.recipients)
+
+
+async def send_no_new_papers_notice(
+    run_id: int,
+    topics_processed: int,
+    papers_found: int,
+) -> int:
+    await network_clock.sync()
+    async with SessionLocal() as session:
+        email = await get_email_settings(session)
+        schedule = await get_schedule_settings(session)
+        run = await session.get(RunLog, run_id)
+        if not email.enabled or not email.recipients:
+            return 0
+        if not email.smtp_host or not email.from_email:
+            return 0
+
+        timezone = ZoneInfo(schedule.timezone)
+        current_time = network_clock.utcnow()
+        local_day = (
+            run.started_at.astimezone(timezone).date()
+            if run is not None
+            else current_time.astimezone(timezone).date()
+        )
+        next_run = next_daily_run_utc(
+            current_time,
+            schedule.timezone,
+            schedule.hour,
+            schedule.minute,
+        ).astimezone(timezone)
+        next_run_text = next_run.strftime("%Y-%m-%d %H:%M %Z")
+        admin_url = f"{schedule.public_base_url.rstrip('/')}/admin/runs"
+        title = f"{local_day.isoformat()} 今日无新增论文"
+        text = "\n".join(
+            [
+                "今日 arXiv 检索已正常完成，没有发现新的论文。",
+                "",
+                f"日期: {local_day.isoformat()}",
+                f"已检索主题: {topics_processed}",
+                f"匹配到的既有论文: {papers_found}",
+                "新增论文: 0",
+                f"下次计划运行: {next_run_text}",
+                "",
+                f"运行记录: {admin_url}",
+            ]
+        )
+        html = f"""<!doctype html>
+        <html><body style="font-family:Arial,sans-serif;color:#1c2733;background:#f4f6f8;margin:0;">
+          <main style="max-width:680px;margin:auto;background:white;padding:28px 34px;">
+            <h1 style="font-size:22px;margin:0 0 12px;">今日无新增论文</h1>
+            <p style="line-height:1.7;">今日 arXiv 检索已正常完成，没有发现新的论文。</p>
+            <table style="border-collapse:collapse;line-height:1.9;">
+              <tr><td>日期</td><td><strong>{local_day.isoformat()}</strong></td></tr>
+              <tr><td>已检索主题</td><td>{topics_processed}</td></tr>
+              <tr><td>匹配到的既有论文</td><td>{papers_found}</td></tr>
+              <tr><td>新增论文</td><td><strong>0</strong></td></tr>
+              <tr><td>下次计划运行</td><td>{escape(next_run_text)}</td></tr>
+            </table>
+            <p><a href="{escape(admin_url)}">查看运行记录</a></p>
+          </main>
+        </body></html>"""
+        message = EmailMessage()
+        message["Subject"] = f"{email.subject_prefix} {title}"
+        message["From"] = f"{email.from_name} <{email.from_email}>"
+        message["To"] = ", ".join(email.recipients)
+        message.set_content(text)
+        message.add_alternative(html, subtype="html")
+        await _send_message(email, message)
         return len(email.recipients)
 
 

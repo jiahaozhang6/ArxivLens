@@ -19,7 +19,11 @@ from app.models import (
 )
 from app.services.analysis_service import create_analysis, execute_analysis
 from app.services.arxiv import ArxivPaperData, fetch_papers_detailed
-from app.services.email_service import send_digest, send_run_failure_alert
+from app.services.email_service import (
+    send_digest,
+    send_no_new_papers_notice,
+    send_run_failure_alert,
+)
 from app.services.settings_service import get_default_profile_id, get_schedule_settings
 
 
@@ -294,6 +298,7 @@ async def _execute_daily_run(
     analyses_failed = 0
     completed_ids: list[int] = []
     emails_sent = 0
+    no_new_notice_sent = False
     trigger = "manual"
 
     try:
@@ -450,10 +455,24 @@ async def _execute_daily_run(
 
         digest_analysis_ids.update(completed_ids)
 
-        if send_email and digest_analysis_ids:
+        clean_no_new_result = (
+            papers_new == 0
+            and not errors
+            and analyses_failed == 0
+            and degraded_topics == 0
+        )
+        if send_email and (clean_no_new_result or digest_analysis_ids):
             await _update_run_progress(run_id, "emailing", 0, 1, 92)
             try:
-                emails_sent = await send_digest(sorted(digest_analysis_ids))
+                if clean_no_new_result:
+                    emails_sent = await send_no_new_papers_notice(
+                        run_id,
+                        topics_processed,
+                        papers_found,
+                    )
+                    no_new_notice_sent = emails_sent > 0
+                else:
+                    emails_sent = await send_digest(sorted(digest_analysis_ids))
             except Exception as exc:
                 errors.append(f"Email delivery failed: {exc}")
                 retry_recommended = True
@@ -481,7 +500,9 @@ async def _execute_daily_run(
             message_parts.append(
                 "All matching papers already had a current analysis; no LLM call was needed."
             )
-        if emails_sent:
+        if no_new_notice_sent:
+            message_parts.append("No-new-paper notification email sent successfully.")
+        elif emails_sent:
             message_parts.append("Email digest sent successfully.")
         status = (
             RunStatus.partial

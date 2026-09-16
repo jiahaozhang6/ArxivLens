@@ -123,7 +123,7 @@ async def test_start_run_replaces_orphan_and_holds_exclusive_lease():
         await _clear_daily_runs()
 
 
-async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(monkeypatch):
+async def test_daily_run_sends_notice_when_no_new_paper_is_found(monkeypatch):
     await _clear_daily_runs()
     now = utcnow()
     async with SessionLocal() as session:
@@ -177,7 +177,6 @@ async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(
         topic_id = topic.id
         paper_id = paper.id
         profile_id = profile.id
-        analysis_id = analysis.id
 
     paper_data = ArxivPaperData(
         arxiv_id=paper.arxiv_id,
@@ -196,12 +195,21 @@ async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(
         comment=None,
     )
     emailed_ids: list[int] = []
+    no_new_notices: list[tuple[int, int, int]] = []
 
     async def fake_fetch(*_args, **_kwargs):
         return ArxivFetchBatch(papers=[paper_data], source="cache")
 
     async def fake_send_digest(analysis_ids: list[int]) -> int:
         emailed_ids.extend(analysis_ids)
+        return 1
+
+    async def fake_send_no_new_notice(
+        run_id: int,
+        topics_processed: int,
+        papers_found: int,
+    ) -> int:
+        no_new_notices.append((run_id, topics_processed, papers_found))
         return 1
 
     progress_stages: list[str] = []
@@ -213,19 +221,22 @@ async def test_daily_run_emails_current_analysis_when_no_new_analysis_is_needed(
 
     monkeypatch.setattr(pipeline, "fetch_papers_detailed", fake_fetch)
     monkeypatch.setattr(pipeline, "send_digest", fake_send_digest)
+    monkeypatch.setattr(pipeline, "send_no_new_papers_notice", fake_send_no_new_notice)
     monkeypatch.setattr(pipeline, "_update_run_progress", capture_progress)
 
     run_id = await pipeline.start_daily_run(trigger="scheduled")
     try:
         await pipeline.execute_daily_run(run_id, topic_ids=[topic_id], send_email=True)
 
-        assert emailed_ids == [analysis_id]
+        assert emailed_ids == []
+        assert no_new_notices == [(run_id, 1, 1)]
         async with SessionLocal() as session:
             run = await session.get(RunLog, run_id)
             assert run is not None
             assert run.status == RunStatus.completed
             assert run.analyses_completed == 0
             assert run.emails_sent == 1
+            assert "No-new-paper notification" in (run.message or "")
             assert run.progress_stage == "completed"
             assert run.progress_percent == 100
             assert progress_stages == ["fetching", "fetching", "analyzing", "emailing", "emailing"]
