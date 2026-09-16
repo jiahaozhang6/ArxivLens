@@ -200,6 +200,9 @@
 
 .workspace {
   min-width: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -250,8 +253,50 @@
 
 .main-content {
   width: min(1500px, 100%);
+  flex: 1;
   margin: 0 auto;
   padding: 22px 26px 48px;
+}
+
+.project-footer {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 12px 24px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.project-footer-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-footer-item > span {
+  color: var(--subtle);
+}
+
+.project-footer a {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #3f4851;
+  text-decoration: none;
+}
+
+.project-footer a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.project-footer a span {
+  overflow-wrap: anywhere;
 }
 
 .setup-banner {
@@ -1567,6 +1612,8 @@ textarea::placeholder {
 
 .reader-site {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--canvas);
 }
 
@@ -1637,6 +1684,7 @@ textarea::placeholder {
 
 .reader-site-main {
   width: min(1320px, 100%);
+  flex: 1;
   margin: 0 auto;
   padding: 20px 28px 52px;
 }
@@ -3368,6 +3416,19 @@ textarea::placeholder {
 
   .reader-site-main {
     padding: 18px 16px 42px;
+  }
+
+  .project-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    padding: 13px 16px;
+  }
+
+  .project-footer-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 
   .filter-band {

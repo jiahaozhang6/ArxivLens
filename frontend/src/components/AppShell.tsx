@@ -20,6 +20,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api, formatDateTime } from '../api'
 import { authQueryKey, useAuthStatus } from '../auth'
 import type { DailyEmailResult, SystemStatus } from '../types'
+import { ProjectFooter } from './ProjectFooter'
 
 const navigationSections = [
   {
@@ -210,6 +211,7 @@ export function AppShell() {
         <main className="main-content">
           <Outlet />
         </main>
+        <ProjectFooter />
       </div>
 
       {notice && (

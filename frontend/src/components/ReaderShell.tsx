@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { api, formatDateTime } from '../api'
 import { authQueryKey } from '../auth'
 import type { SystemStatus } from '../types'
+import { ProjectFooter } from './ProjectFooter'
 
 export function ReaderShell() {
   const [notice, setNotice] = useState<string | null>(null)
@@ -63,6 +64,7 @@ export function ReaderShell() {
       )}
 
       <main className="reader-site-main"><Outlet /></main>
+      <ProjectFooter />
       {notice && <button className="toast" onClick={() => setNotice(null)}>{notice}</button>}
     </div>
   )
