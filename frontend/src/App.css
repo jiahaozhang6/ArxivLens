@@ -1682,6 +1682,45 @@ textarea::placeholder {
   white-space: nowrap;
 }
 
+.reader-role-badge {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: #276158;
+  background: var(--teal-soft);
+  border: 1px solid #b7ddd6;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reader-readonly-summary {
+  min-width: 210px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  color: #276158;
+}
+
+.reader-readonly-summary > span {
+  display: grid;
+  gap: 2px;
+}
+
+.reader-readonly-summary strong,
+.reader-readonly-summary small {
+  display: block;
+}
+
+.reader-readonly-summary small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .reader-site-main {
   width: min(1320px, 100%);
   flex: 1;
@@ -1837,6 +1876,35 @@ textarea::placeholder {
   width: 100%;
   min-height: 42px;
   margin-top: 2px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--subtle);
+  font-size: 11px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  height: 1px;
+  flex: 1;
+  content: "";
+  background: var(--border);
+}
+
+.auth-guest-submit {
+  width: 100%;
+  min-height: 42px;
+}
+
+.auth-guest-help {
+  margin-top: -8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .auth-error {
@@ -3710,6 +3778,16 @@ textarea::placeholder {
   .reader-last-sync,
   .reader-action-label {
     display: none;
+  }
+
+  .reader-role-badge {
+    min-height: 36px;
+    padding: 0 8px;
+  }
+
+  .reader-readonly-summary {
+    min-width: 0;
+    justify-content: flex-start;
   }
 
   .reader-header-actions .secondary-button,

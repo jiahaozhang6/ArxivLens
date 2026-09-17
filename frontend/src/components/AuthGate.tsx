@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { authQueryKey, useAuthStatus } from '../auth'
 
-export function AuthGate() {
+export function AuthGate({ adminOnly = false }: { adminOnly?: boolean }) {
   const authQuery = useAuthStatus()
   const queryClient = useQueryClient()
   const location = useLocation()
@@ -30,6 +30,9 @@ export function AuthGate() {
   }
   if (!authQuery.data?.authenticated) {
     return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />
+  }
+  if (adminOnly && authQuery.data.role !== 'admin') {
+    return <Navigate to="/" replace />
   }
   return <Outlet />
 }

@@ -65,6 +65,11 @@ export function ModelsPage() {
     queryKey: ['llm-presets'],
     queryFn: () => api<ProviderPreset[]>('/llm-profiles/presets'),
   })
+  const closeEditor = () => {
+    setForm((current) => ({ ...current, api_key: '' }))
+    setModelOptions([])
+    setEditingId(null)
+  }
 
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -93,7 +98,7 @@ export function ModelsPage() {
         : api<LLMProfile>('/llm-profiles/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
     },
     onSuccess: () => {
-      setEditingId(null)
+      closeEditor()
       setNotice('云模型配置已保存')
       void queryClient.invalidateQueries({ queryKey: ['llm-profiles'] })
       void queryClient.invalidateQueries({ queryKey: ['system-status'] })
@@ -202,9 +207,9 @@ export function ModelsPage() {
 
       {editingId !== null && (
         <div className="modal-layer">
-          <button className="modal-scrim" onClick={() => setEditingId(null)} aria-label="关闭" />
+          <button className="modal-scrim" onClick={closeEditor} aria-label="关闭" />
           <section className="form-modal wide-modal" role="dialog" aria-modal="true" aria-label="云模型配置">
-            <header><div><span className="eyebrow">CLOUD LLM</span><h2>{editingId === 'new' ? '添加云模型' : '编辑云模型'}</h2></div><button className="icon-button" onClick={() => setEditingId(null)} title="关闭"><X size={20} /></button></header>
+            <header><div><span className="eyebrow">CLOUD LLM</span><h2>{editingId === 'new' ? '添加云模型' : '编辑云模型'}</h2></div><button className="icon-button" onClick={closeEditor} title="关闭"><X size={20} /></button></header>
             <div className="form-grid two-columns">
               <label className="field-stack"><span>配置名称</span><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label className="field-stack"><span>供应商</span><select value={form.provider} onChange={(event) => applyPreset(event.target.value)}>{presetsQuery.data?.map((preset) => <option key={preset.id} value={preset.id}>{preset.label} · {preset.region === 'CN' ? '国内' : preset.region === 'Global' ? '国外' : '自定义'}</option>)}</select></label>
@@ -214,7 +219,7 @@ export function ModelsPage() {
                 <input id="model-id" value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} placeholder="可手动填写模型 ID" />
                 {modelOptions.length > 0 && <select className="model-option-select" value={modelOptions.some((item) => item.id === form.model) ? form.model : ''} onChange={(event) => event.target.value && setForm({ ...form, model: event.target.value })} aria-label="选择云模型"><option value="">从 {modelOptions.length} 个模型中选择</option>{modelOptions.map((item) => <option key={item.id} value={item.id}>{item.label === item.id ? item.id : `${item.label} · ${item.id}`}</option>)}</select>}
               </div>
-              <label className="field-stack"><span className="field-label-row"><span>API 密钥</span>{selectedPreset?.api_key_url && <a href={selectedPreset.api_key_url} target="_blank" rel="noreferrer">管理密钥 <ExternalLink size={12} /></a>}</span><input type="password" autoComplete="new-password" value={form.api_key} onChange={(event) => setForm({ ...form, api_key: event.target.value })} placeholder={editingId === 'new' ? 'sk-...' : '留空则保留原密钥'} /></label>
+              <label className="field-stack"><span className="field-label-row"><span>API 密钥</span>{selectedPreset?.api_key_url && <a href={selectedPreset.api_key_url} target="_blank" rel="noreferrer">管理密钥 <ExternalLink size={12} /></a>}</span><input type="password" autoComplete="new-password" spellCheck={false} value={form.api_key} onChange={(event) => setForm({ ...form, api_key: event.target.value })} placeholder={editingId === 'new' ? 'sk-...' : '留空则保留原密钥'} /></label>
               <label className="field-stack"><span>协议</span><select value={form.protocol} onChange={(event) => { setModelOptions([]); setForm({ ...form, protocol: event.target.value as ProfileForm['protocol'] }) }}><option value="openai_compatible">OpenAI compatible</option><option value="anthropic">Anthropic Messages</option></select></label>
               <label className="field-stack"><span>最大输出 tokens</span><input type="number" min={128} max={128000} value={form.max_tokens} onChange={(event) => setForm({ ...form, max_tokens: Number(event.target.value) })} /></label>
               <label className="field-stack"><span>Temperature</span><input type="number" min={0} max={2} step={0.1} value={form.temperature} onChange={(event) => setForm({ ...form, temperature: Number(event.target.value) })} /></label>

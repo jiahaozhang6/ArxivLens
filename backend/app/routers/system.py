@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_admin
+from app.auth import require_admin, require_reader
 from app.database import get_session
 from app.models import LLMProfile, RunLog, RunStatus, Topic
 from app.schemas import RunLogOut
@@ -15,7 +15,7 @@ from app.services.settings_service import ensure_default_settings, get_default_p
 router = APIRouter(
     prefix="/api/system",
     tags=["system"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_reader)],
 )
 
 
@@ -81,7 +81,7 @@ async def read_network_time(session: AsyncSession = Depends(get_session)):
     return _time_status(schedule)
 
 
-@router.post("/time/actions/sync")
+@router.post("/time/actions/sync", dependencies=[Depends(require_admin)])
 async def synchronize_network_time(session: AsyncSession = Depends(get_session)):
     await network_clock.sync(force=True)
     schedule, _ = await ensure_default_settings(session)

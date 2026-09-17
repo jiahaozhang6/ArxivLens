@@ -99,6 +99,7 @@ export function AppShell() {
       queryClient.setQueryData(authQueryKey, {
         setup_required: false,
         authenticated: false,
+        role: null,
         user: null,
         session_expires_at: null,
       })

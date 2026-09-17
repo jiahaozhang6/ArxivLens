@@ -10,7 +10,7 @@ from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth import require_admin
+from app.auth import AuthContext, require_admin, require_reader
 from app.config import get_settings
 from app.database import get_session
 from app.models import Analysis, AnalysisStatus, LLMProfile, Paper, PaperDecision, Topic, TopicPaper
@@ -27,7 +27,7 @@ from app.services.settings_service import get_default_profile_id, get_schedule_s
 router = APIRouter(
     prefix="/api/papers",
     tags=["papers"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_reader)],
 )
 _analysis_tasks: set[asyncio.Task] = set()
 
@@ -55,7 +55,7 @@ def _analysis_dict(analysis: Analysis | None):
     return AnalysisOut.model_validate(analysis) if analysis else None
 
 
-def _paper_dict(paper: Paper, detailed: bool = False) -> dict:
+def _paper_dict(paper: Paper, detailed: bool = False, include_private: bool = True) -> dict:
     topics = sorted(
         (
             {
@@ -84,11 +84,11 @@ def _paper_dict(paper: Paper, detailed: bool = False) -> dict:
         "doi": paper.doi,
         "journal_ref": paper.journal_ref,
         "comment": paper.comment,
-        "is_read": paper.is_read,
-        "is_starred": paper.is_starred,
-        "decision": paper.decision,
-        "personal_notes": paper.personal_notes,
-        "user_tags": paper.user_tags,
+        "is_read": paper.is_read if include_private else False,
+        "is_starred": paper.is_starred if include_private else False,
+        "decision": paper.decision if include_private else PaperDecision.unreviewed,
+        "personal_notes": paper.personal_notes if include_private else None,
+        "user_tags": paper.user_tags if include_private else [],
         "topics": topics,
         "latest_analysis": _analysis_dict(_latest_analysis(paper)),
         "analysis_count": len(paper.analyses),
@@ -127,8 +127,10 @@ async def list_papers(
     sort: str = Query(default="relevance"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    viewer: AuthContext = Depends(require_reader),
     session: AsyncSession = Depends(get_session),
 ):
+    include_private = viewer.role == "admin"
     schedule = await get_schedule_settings(session)
     link_conditions = []
     if day:
@@ -148,13 +150,13 @@ async def list_papers(
                 Paper.arxiv_id.ilike(pattern),
             )
         )
-    if state == "unread":
+    if include_private and state == "unread":
         conditions.append(Paper.is_read.is_(False))
-    elif state == "read":
+    elif include_private and state == "read":
         conditions.append(Paper.is_read.is_(True))
-    elif state == "starred":
+    elif include_private and state == "starred":
         conditions.append(Paper.is_starred.is_(True))
-    elif state in {item.value for item in PaperDecision}:
+    elif include_private and state in {item.value for item in PaperDecision}:
         conditions.append(Paper.decision == state)
 
     completed_exists = _analysis_exists(AnalysisStatus.completed)
@@ -213,15 +215,20 @@ async def list_papers(
             or 0
         )
 
+    base_total = await count_where()
     stats = {
-        "total": await count_where(),
-        "unread": await count_where(Paper.is_read.is_(False)),
-        "starred": await count_where(Paper.is_starred.is_(True)),
-        "relevant": await count_where(Paper.decision == PaperDecision.relevant),
+        "total": base_total,
+        "unread": await count_where(Paper.is_read.is_(False)) if include_private else base_total,
+        "starred": await count_where(Paper.is_starred.is_(True)) if include_private else 0,
+        "relevant": (
+            await count_where(Paper.decision == PaperDecision.relevant)
+            if include_private
+            else 0
+        ),
         "analyzed": await count_where(completed_exists),
     }
     return {
-        "items": [_paper_dict(paper) for paper in papers],
+        "items": [_paper_dict(paper, include_private=include_private) for paper in papers],
         "page": page,
         "page_size": page_size,
         "total": total,
@@ -257,7 +264,7 @@ async def list_dates(
     }
 
 
-@router.post("/actions/bulk")
+@router.post("/actions/bulk", dependencies=[Depends(require_admin)])
 async def bulk_manage_papers(
     payload: PaperBulkActionRequest,
     session: AsyncSession = Depends(get_session),
@@ -295,7 +302,11 @@ async def bulk_manage_papers(
     }
 
 
-@router.post("/actions/analyze", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/actions/analyze",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
 async def bulk_reanalyze_papers(
     payload: BulkReanalyzeRequest,
     session: AsyncSession = Depends(get_session),
@@ -358,7 +369,11 @@ async def bulk_reanalyze_papers(
 
 
 @router.get("/{paper_id}")
-async def get_paper(paper_id: int, session: AsyncSession = Depends(get_session)):
+async def get_paper(
+    paper_id: int,
+    viewer: AuthContext = Depends(require_reader),
+    session: AsyncSession = Depends(get_session),
+):
     paper = await session.scalar(
         select(Paper)
         .where(Paper.id == paper_id)
@@ -369,10 +384,10 @@ async def get_paper(paper_id: int, session: AsyncSession = Depends(get_session))
     )
     if paper is None:
         raise HTTPException(status_code=404, detail="Paper not found")
-    return _paper_dict(paper, detailed=True)
+    return _paper_dict(paper, detailed=True, include_private=viewer.role == "admin")
 
 
-@router.patch("/{paper_id}")
+@router.patch("/{paper_id}", dependencies=[Depends(require_admin)])
 async def update_paper(
     paper_id: int,
     payload: PaperUpdate,
@@ -392,7 +407,11 @@ async def update_paper(
     return {"ok": True}
 
 
-@router.post("/{paper_id}/actions/analyze", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{paper_id}/actions/analyze",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
 async def reanalyze_paper(
     paper_id: int,
     payload: ReanalyzeRequest,
@@ -430,7 +449,11 @@ async def reanalyze_paper(
     return {"analysis_id": analysis_id, "status": "pending"}
 
 
-@router.get("/{paper_id}/export/markdown", response_class=PlainTextResponse)
+@router.get(
+    "/{paper_id}/export/markdown",
+    response_class=PlainTextResponse,
+    dependencies=[Depends(require_admin)],
+)
 async def export_markdown(paper_id: int, session: AsyncSession = Depends(get_session)):
     paper = await session.scalar(
         select(Paper).where(Paper.id == paper_id).options(selectinload(Paper.analyses))

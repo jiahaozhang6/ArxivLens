@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, formatDate, formatDateTime } from '../api'
+import { useAuthStatus } from '../auth'
 import type { Analysis, Paper } from '../types'
 
 function Score({ label, value }: { label: string; value: number | null }) {
@@ -18,7 +19,7 @@ function Score({ label, value }: { label: string; value: number | null }) {
 }
 
 function DeepAnalysis({ analysis }: { analysis: Analysis | null }) {
-  if (!analysis) return <div className="paper-reading-analysis-empty">尚无后台深度解读，可以先使用右侧快速问答。</div>
+  if (!analysis) return <div className="paper-reading-analysis-empty">尚无后台深度解读。</div>
   if (analysis.status === 'pending' || analysis.status === 'running') {
     return <div className="paper-reading-analysis-empty"><RefreshCw size={17} className="spin" /> 后台深度解读正在进行</div>
   }
@@ -51,6 +52,8 @@ export function PaperReadingPage() {
   const paperId = Number(useParams().paperId)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const authQuery = useAuthStatus()
+  const readOnly = authQuery.data?.role === 'guest'
   const [notes, setNotes] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
   const initializedPaperRef = useRef<number | null>(null)
@@ -91,8 +94,8 @@ export function PaperReadingPage() {
       <div className="paper-reading-topbar">
         <button className="icon-text-button" onClick={() => navigate(-1)}><ArrowLeft size={16} /> 返回简报</button>
         <div className="paper-reading-actions">
-          <button className={`icon-text-button ${paper.is_read ? 'selected' : ''}`} onClick={() => patchMutation.mutate({ is_read: !paper.is_read })}><Check size={16} /> {paper.is_read ? '已读' : '标记已读'}</button>
-          <button className={`icon-text-button ${paper.is_starred ? 'starred' : ''}`} onClick={() => patchMutation.mutate({ is_starred: !paper.is_starred })}><Star size={16} fill={paper.is_starred ? 'currentColor' : 'none'} /> 收藏</button>
+          {!readOnly && <button className={`icon-text-button ${paper.is_read ? 'selected' : ''}`} onClick={() => patchMutation.mutate({ is_read: !paper.is_read })}><Check size={16} /> {paper.is_read ? '已读' : '标记已读'}</button>}
+          {!readOnly && <button className={`icon-text-button ${paper.is_starred ? 'starred' : ''}`} onClick={() => patchMutation.mutate({ is_starred: !paper.is_starred })}><Star size={16} fill={paper.is_starred ? 'currentColor' : 'none'} /> 收藏</button>}
           <a className="icon-button" href={paper.abs_url} target="_blank" rel="noreferrer" title="打开 arXiv"><ExternalLink size={17} /></a>
           <a className="icon-button" href={paper.pdf_url} target="_blank" rel="noreferrer" title="打开 PDF"><FileText size={17} /></a>
         </div>
@@ -113,11 +116,11 @@ export function PaperReadingPage() {
             </div>
             <DeepAnalysis analysis={analysis} />
           </section>
-          <section className="paper-reading-notes">
+          {!readOnly && <section className="paper-reading-notes">
             <div className="paper-reading-section-title"><div><h2>科研笔记</h2><span>随论文长期保存</span></div></div>
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={6} placeholder="记录可复现实验、相关工作、疑问和后续研究想法…" />
             <button className="secondary-button" onClick={() => patchMutation.mutate({ personal_notes: notes })} disabled={patchMutation.isPending}><Save size={16} /> 保存笔记</button>
-          </section>
+          </section>}
         </main>
       </div>
       {notice && <button className="toast" onClick={() => setNotice(null)}>{notice}</button>}

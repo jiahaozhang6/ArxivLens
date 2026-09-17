@@ -15,6 +15,7 @@ import {
   ThumbsUp,
 } from 'lucide-react'
 import { api, formatDate, localDateString, toQuery } from '../api'
+import { useAuthStatus } from '../auth'
 import type { NetworkTimeStatus, Paper, PaperListResponse, Topic } from '../types'
 
 type ReadingMode = 'unread' | 'all' | 'starred' | 'relevant'
@@ -49,11 +50,13 @@ function ReaderPaper({
   onOpen,
   onPatch,
   busy,
+  readOnly,
 }: {
   paper: Paper
   onOpen: () => void
   onPatch: (values: Record<string, unknown>) => void
   busy: boolean
+  readOnly: boolean
 }) {
   const analysis = paper.latest_analysis
   const completed = analysis?.status === 'completed'
@@ -66,9 +69,11 @@ function ReaderPaper({
           <span>{formatDate(paper.published_at)}</span>
           <span>{paper.arxiv_id}v{paper.version}</span>
         </div>
-        <button className={'icon-button ' + (paper.is_starred ? 'starred' : '')} onClick={() => onPatch({ is_starred: !paper.is_starred })} disabled={busy} title={paper.is_starred ? '取消收藏' : '收藏论文'}>
-          <Star size={18} fill={paper.is_starred ? 'currentColor' : 'none'} />
-        </button>
+        {!readOnly && (
+          <button className={'icon-button ' + (paper.is_starred ? 'starred' : '')} onClick={() => onPatch({ is_starred: !paper.is_starred })} disabled={busy} title={paper.is_starred ? '取消收藏' : '收藏论文'}>
+            <Star size={18} fill={paper.is_starred ? 'currentColor' : 'none'} />
+          </button>
+        )}
       </div>
 
       <button className="reader-paper-title" onClick={onOpen}>
@@ -109,13 +114,15 @@ function ReaderPaper({
       )}
 
       <div className="reader-paper-footer">
-        <div className="reader-decision-control" aria-label="人工阅读判断">
-          <button className={paper.decision === 'relevant' ? 'active positive' : ''} onClick={() => onPatch({ decision: paper.decision === 'relevant' ? 'unreviewed' : 'relevant' })} title="值得精读"><ThumbsUp size={16} /><span>精读</span></button>
-          <button className={paper.decision === 'maybe' ? 'active maybe' : ''} onClick={() => onPatch({ decision: paper.decision === 'maybe' ? 'unreviewed' : 'maybe' })} title="稍后判断"><CircleHelp size={16} /><span>稍后</span></button>
-          <button className={paper.decision === 'irrelevant' ? 'active negative' : ''} onClick={() => onPatch({ decision: paper.decision === 'irrelevant' ? 'unreviewed' : 'irrelevant' })} title="不相关"><ThumbsDown size={16} /><span>忽略</span></button>
-        </div>
+        {!readOnly && (
+          <div className="reader-decision-control" aria-label="人工阅读判断">
+            <button className={paper.decision === 'relevant' ? 'active positive' : ''} onClick={() => onPatch({ decision: paper.decision === 'relevant' ? 'unreviewed' : 'relevant' })} title="值得精读"><ThumbsUp size={16} /><span>精读</span></button>
+            <button className={paper.decision === 'maybe' ? 'active maybe' : ''} onClick={() => onPatch({ decision: paper.decision === 'maybe' ? 'unreviewed' : 'maybe' })} title="稍后判断"><CircleHelp size={16} /><span>稍后</span></button>
+            <button className={paper.decision === 'irrelevant' ? 'active negative' : ''} onClick={() => onPatch({ decision: paper.decision === 'irrelevant' ? 'unreviewed' : 'irrelevant' })} title="不相关"><ThumbsDown size={16} /><span>忽略</span></button>
+          </div>
+        )}
         <div className="reader-card-actions">
-          <button className={'ghost-button ' + (paper.is_read ? 'selected' : '')} onClick={() => onPatch({ is_read: !paper.is_read })} disabled={busy}><Check size={16} /> {paper.is_read ? '已读' : '标记已读'}</button>
+          {!readOnly && <button className={'ghost-button ' + (paper.is_read ? 'selected' : '')} onClick={() => onPatch({ is_read: !paper.is_read })} disabled={busy}><Check size={16} /> {paper.is_read ? '已读' : '标记已读'}</button>}
           <button className="primary-button" onClick={onOpen}><BookOpenCheck size={16} /> 打开精读</button>
         </div>
       </div>
@@ -125,6 +132,8 @@ function ReaderPaper({
 
 export function ReaderPage() {
   const navigate = useNavigate()
+  const authQuery = useAuthStatus()
+  const readOnly = authQuery.data?.role === 'guest'
   const initialToday = localDateString()
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [mode, setMode] = useState<ReadingMode>('unread')
@@ -150,7 +159,8 @@ export function ReaderPage() {
     : initialToday
   const day = selectedDay ?? correctedToday
 
-  const state = mode === 'all' ? 'all' : mode
+  const effectiveMode: ReadingMode = readOnly ? 'all' : mode
+  const state = effectiveMode === 'all' ? 'all' : effectiveMode
   const papersQuery = useQuery({
     queryKey: ['papers', 'reader', day, topicId, state, debouncedSearch],
     queryFn: () => api<PaperListResponse>('/papers' + toQuery({
@@ -179,12 +189,14 @@ export function ReaderPage() {
   const changeDay = (value: string) => {
     setSelectedDay(value)
   }
-  const modes: Array<{ id: ReadingMode; label: string; count: number }> = [
-    { id: 'unread', label: '待阅读', count: data?.stats.unread ?? 0 },
-    { id: 'all', label: '全部', count: data?.stats.total ?? 0 },
-    { id: 'starred', label: '收藏', count: data?.stats.starred ?? 0 },
-    { id: 'relevant', label: '精读', count: data?.stats.relevant ?? 0 },
-  ]
+  const modes: Array<{ id: ReadingMode; label: string; count: number }> = readOnly
+    ? [{ id: 'all', label: '全部论文', count: data?.stats.total ?? 0 }]
+    : [
+        { id: 'unread', label: '待阅读', count: data?.stats.unread ?? 0 },
+        { id: 'all', label: '全部', count: data?.stats.total ?? 0 },
+        { id: 'starred', label: '收藏', count: data?.stats.starred ?? 0 },
+        { id: 'relevant', label: '精读', count: data?.stats.relevant ?? 0 },
+      ]
 
   return (
     <div className="reader-page">
@@ -194,10 +206,14 @@ export function ReaderPage() {
           <h2>{readerDateLabel(day, correctedToday)}的研究简报</h2>
           <p>{data?.stats.total ?? 0} 篇收录 · {data?.stats.analyzed ?? 0} 篇已有中文解读</p>
         </div>
-        <div className="reader-progress" aria-label={`阅读进度 ${progress}%`}>
-          <div><span>阅读进度</span><strong>{readCount} / {data?.stats.total ?? 0}</strong></div>
-          <span className="reader-progress-track"><span style={{ width: `${progress}%` }} /></span>
-        </div>
+        {readOnly ? (
+          <div className="reader-readonly-summary"><BookOpenCheck size={20} /><span><strong>访客只读模式</strong><small>可查看论文与已有解读</small></span></div>
+        ) : (
+          <div className="reader-progress" aria-label={`阅读进度 ${progress}%`}>
+            <div><span>阅读进度</span><strong>{readCount} / {data?.stats.total ?? 0}</strong></div>
+            <span className="reader-progress-track"><span style={{ width: `${progress}%` }} /></span>
+          </div>
+        )}
       </section>
 
       <section className="reader-toolbar" aria-label="阅读筛选">
@@ -217,7 +233,7 @@ export function ReaderPage() {
         <aside className="reader-queue">
           <div className="reader-queue-title"><Sparkles size={17} /><strong>阅读队列</strong></div>
           <div className="reader-mode-tabs">
-            {modes.map((item) => <button key={item.id} className={mode === item.id ? 'active' : ''} onClick={() => setMode(item.id)}><span>{item.label}</span><small>{item.count}</small></button>)}
+            {modes.map((item) => <button key={item.id} className={effectiveMode === item.id ? 'active' : ''} onClick={() => setMode(item.id)}><span>{item.label}</span><small>{item.count}</small></button>)}
           </div>
           <div className="reader-queue-note">
             <strong>{timeQuery.data?.synchronized ? '网络时间已校准' : '使用系统时间'}</strong>
@@ -231,9 +247,9 @@ export function ReaderPage() {
           ) : papersQuery.isError ? (
             <div className="empty-state error-state"><strong>研究简报读取失败</strong><span>{(papersQuery.error as Error).message}</span></div>
           ) : data?.items.length ? (
-            data.items.map((paper) => <ReaderPaper key={paper.id} paper={paper} onOpen={() => navigate(`/paper/${paper.id}`)} busy={patchMutation.isPending} onPatch={(values) => patchMutation.mutate({ id: paper.id, values })} />)
+            data.items.map((paper) => <ReaderPaper key={paper.id} paper={paper} onOpen={() => navigate(`/paper/${paper.id}`)} busy={patchMutation.isPending} readOnly={readOnly} onPatch={(values) => patchMutation.mutate({ id: paper.id, values })} />)
           ) : (
-            <div className="reader-empty"><BookOpenCheck size={26} /><strong>{mode === 'unread' ? '这一天的论文已经读完' : '没有符合当前条件的论文'}</strong><span>切换日期、阅读队列或研究主题继续查看。</span></div>
+            <div className="reader-empty"><BookOpenCheck size={26} /><strong>{effectiveMode === 'unread' ? '这一天的论文已经读完' : '没有符合当前条件的论文'}</strong><span>切换日期、阅读队列或研究主题继续查看。</span></div>
           )}
         </section>
       </div>

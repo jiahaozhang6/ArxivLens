@@ -20,12 +20,13 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     secret_key: str = "development-only-change-me"
+    secret_key_previous: str = ""
     database_url: str = _default_database_url()
     frontend_dist_dir: Path = PROJECT_ROOT / "frontend" / "dist"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
-    auth_session_hours: int = 168
+    auth_session_hours: int = 24
     auth_login_max_attempts: int = 5
     auth_lock_minutes: int = 15
     auth_cookie_secure: bool = False

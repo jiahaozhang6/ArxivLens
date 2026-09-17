@@ -183,7 +183,7 @@ function SettingsForm({ initial }: { initial: AppSettings }) {
           <label className="field-stack"><span>端口</span><input type="number" value={email.smtp_port} onChange={(event) => setEmail({ ...email, smtp_port: Number(event.target.value) })} /></label>
           <label className="field-stack"><span>安全方式</span><select value={email.security} onChange={(event) => setEmail({ ...email, security: event.target.value as EmailSettings['security'] })}><option value="starttls">STARTTLS</option><option value="ssl">SSL/TLS</option><option value="plain">Plain</option></select></label>
           <label className="field-stack"><span>SMTP 用户名</span><input value={email.username ?? ''} onChange={(event) => setEmail({ ...email, username: event.target.value })} placeholder="通常填写完整邮箱地址" />{email.smtp_host.trim().toLowerCase() === 'smtp.qq.com' && <small className="field-help">QQ 邮箱填写完整邮箱地址，密码栏填写授权码。</small>}</label>
-          <label className="field-stack"><span>密码或授权码</span><input type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={email.has_password ? '留空则复用已保存的密码' : '填写 SMTP 密码或授权码'} /></label>
+          <label className="field-stack"><span>密码或授权码</span><input type="password" autoComplete="new-password" spellCheck={false} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={email.has_password ? '留空则复用已保存的密码' : '填写 SMTP 密码或授权码'} /></label>
           <label className="field-stack"><span>发件人名称</span><input value={email.from_name} onChange={(event) => setEmail({ ...email, from_name: event.target.value })} /></label>
           <label className="field-stack span-two"><span>发件邮箱</span><input type="email" value={email.from_email} onChange={(event) => setEmail({ ...email, from_email: event.target.value })} /></label>
           <label className="field-stack full-span"><span>收件邮箱</span><textarea rows={4} value={recipients} onChange={(event) => setRecipients(event.target.value)} placeholder={'researcher@example.com\nlab@example.edu'} /></label>
@@ -196,10 +196,10 @@ function SettingsForm({ initial }: { initial: AppSettings }) {
         <header><div className="section-icon security"><ShieldCheck size={19} /></div><div><h2>账号安全</h2><p>当前管理员：{authQuery.data?.user?.username ?? '-'}。修改密码后仅保留当前登录。</p></div></header>
         <div className="form-grid three-columns">
           <label className="field-stack"><span>当前密码</span><input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
-          <label className="field-stack"><span>新密码</span><input type="password" autoComplete="new-password" minLength={12} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><small className="field-help">至少 12 个字符，避免与其他服务共用。</small></label>
-          <label className="field-stack"><span>确认新密码</span><input type="password" autoComplete="new-password" minLength={12} maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+          <label className="field-stack"><span>新密码</span><input type="password" autoComplete="new-password" minLength={14} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><small className="field-help">至少 14 个字符；20 个字符以上可使用容易记忆但独立的密码短语。</small></label>
+          <label className="field-stack"><span>确认新密码</span><input type="password" autoComplete="new-password" minLength={14} maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
         </div>
-        <div className="section-footer"><span className="security-session-note"><KeyRound size={15} /> 会话会定期过期，连续登录失败会临时锁定账号。</span><button className="secondary-button" onClick={() => passwordMutation.mutate()} disabled={passwordMutation.isPending || !currentPassword || newPassword.length < 12 || !confirmPassword}><Save size={16} /> 更新密码</button></div>
+        <div className="section-footer"><span className="security-session-note"><KeyRound size={15} /> 会话会定期过期，连续登录失败会临时锁定账号。</span><button className="secondary-button" onClick={() => passwordMutation.mutate()} disabled={passwordMutation.isPending || !currentPassword || newPassword.length < 14 || !confirmPassword}><Save size={16} /> 更新密码</button></div>
       </section>
       {notice && <button className="toast" onClick={() => setNotice(null)}>{notice}</button>}
     </div>

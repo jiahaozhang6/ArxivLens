@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import require_admin
+from app.auth import require_admin, require_reader
 from app.database import get_session
 from app.models import LLMProfile, Topic
 from app.schemas import (
@@ -21,7 +21,7 @@ from app.services.model_routing import run_with_profile_fallback
 router = APIRouter(
     prefix="/api/topics",
     tags=["topics"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_reader)],
 )
 
 
@@ -54,7 +54,12 @@ async def list_topics(session: AsyncSession = Depends(get_session)):
     return list(await session.scalars(select(Topic).order_by(Topic.name)))
 
 
-@router.post("", response_model=TopicOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=TopicOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin)],
+)
 async def create_topic(payload: TopicCreate, session: AsyncSession = Depends(get_session)):
     await _validate_profile(session, payload.llm_profile_id)
     topic = Topic(**payload.model_dump())
@@ -70,7 +75,7 @@ async def create_topic(payload: TopicCreate, session: AsyncSession = Depends(get
     return topic
 
 
-@router.put("/{topic_id}", response_model=TopicOut)
+@router.put("/{topic_id}", response_model=TopicOut, dependencies=[Depends(require_admin)])
 async def update_topic(
     topic_id: int,
     payload: TopicUpdate,
@@ -95,7 +100,11 @@ async def update_topic(
     return topic
 
 
-@router.delete("/{topic_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{topic_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admin)],
+)
 async def delete_topic(topic_id: int, session: AsyncSession = Depends(get_session)):
     topic = await session.get(Topic, topic_id)
     if topic is None:
@@ -104,7 +113,7 @@ async def delete_topic(topic_id: int, session: AsyncSession = Depends(get_sessio
     await session.commit()
 
 
-@router.post("/actions/preview")
+@router.post("/actions/preview", dependencies=[Depends(require_admin)])
 async def preview_topic(payload: TopicPreviewRequest):
     try:
         papers = await fetch_papers(
@@ -130,7 +139,11 @@ async def preview_topic(payload: TopicPreviewRequest):
     }
 
 
-@router.post("/actions/suggest-query", response_model=TopicQuerySuggestionOut)
+@router.post(
+    "/actions/suggest-query",
+    response_model=TopicQuerySuggestionOut,
+    dependencies=[Depends(require_admin)],
+)
 async def create_query_suggestion(
     payload: TopicQuerySuggestionRequest,
     session: AsyncSession = Depends(get_session),

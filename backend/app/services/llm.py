@@ -413,7 +413,7 @@ async def complete_with_profile(
     system_prompt: str,
     user_prompt: str,
 ) -> str:
-    api_key = decrypt_secret(profile.encrypted_api_key)
+    api_key = decrypt_secret(profile.encrypted_api_key, "llm")
     if not api_key:
         raise LLMRequestError("This cloud model profile has no API key")
     protocol = getattr(profile.protocol, "value", profile.protocol)
@@ -563,7 +563,7 @@ async def stream_chat_with_profile(
     messages: list[dict[str, str]],
     max_tokens: int = 1600,
 ) -> AsyncIterator[str]:
-    api_key = decrypt_secret(profile.encrypted_api_key)
+    api_key = decrypt_secret(profile.encrypted_api_key, "llm")
     if not api_key:
         raise LLMRequestError("This cloud model profile has no API key")
     output_limit = min(max(max_tokens, 128), profile.max_tokens)

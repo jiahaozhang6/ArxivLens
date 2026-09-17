@@ -10,6 +10,7 @@ export interface AdminUser {
 export interface AuthStatus {
   setup_required: boolean
   authenticated: boolean
+  role: 'admin' | 'guest' | null
   user: AdminUser | null
   session_expires_at: string | null
 }

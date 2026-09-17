@@ -55,7 +55,7 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
-    if request.url.path.startswith("/api/auth"):
+    if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     if settings_config.auth_cookie_secure:
         response.headers.setdefault(

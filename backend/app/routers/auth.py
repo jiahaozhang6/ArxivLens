@@ -9,12 +9,17 @@ from app.auth import (
     AuthContext,
     clear_auth_cookies,
     create_auth_session,
+    create_guest_token,
     get_auth_context,
     hash_password,
     normalize_username,
+    password_needs_rehash,
+    require_admin,
     require_auth_context,
     set_auth_cookies,
     set_csrf_cookie,
+    set_guest_cookie,
+    validate_password_strength,
     verify_password,
 )
 from app.config import get_settings
@@ -30,6 +35,7 @@ def _status_payload(user: AdminUser, auth_session: AuthSession) -> AuthStatusOut
     return AuthStatusOut(
         setup_required=False,
         authenticated=True,
+        role="admin",
         user=AdminUserOut.model_validate(user),
         session_expires_at=auth_session.expires_at,
     )
@@ -43,8 +49,16 @@ async def read_auth_status(
 ):
     context = await get_auth_context(request, session)
     if context is not None:
-        set_csrf_cookie(response, context.session.csrf_token, context.session.expires_at)
-        return _status_payload(context.user, context.session)
+        if context.role == "guest":
+            return AuthStatusOut(
+                setup_required=False,
+                authenticated=True,
+                role="guest",
+                session_expires_at=context.expires_at,
+            )
+        if context.user is not None and context.session is not None:
+            set_csrf_cookie(response, context.session.csrf_token, context.session.expires_at)
+            return _status_payload(context.user, context.session)
     user_count = await session.scalar(select(func.count()).select_from(AdminUser)) or 0
     return AuthStatusOut(setup_required=user_count == 0, authenticated=False)
 
@@ -60,6 +74,7 @@ async def setup_admin(
         raise HTTPException(status_code=409, detail="管理员账号已经创建")
     try:
         normalized = normalize_username(payload.username)
+        validate_password_strength(payload.password, payload.username)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     user = AdminUser(
@@ -78,6 +93,18 @@ async def setup_admin(
     raw_token, auth_session = await create_auth_session(session, user, request)
     set_auth_cookies(response, raw_token, auth_session.csrf_token)
     return _status_payload(user, auth_session)
+
+
+@router.post("/guest", response_model=AuthStatusOut)
+async def guest_login(response: Response):
+    token, expires_at = create_guest_token()
+    set_guest_cookie(response, token)
+    return AuthStatusOut(
+        setup_required=False,
+        authenticated=True,
+        role="guest",
+        session_expires_at=expires_at,
+    )
 
 
 @router.post("/login", response_model=AuthStatusOut)
@@ -116,6 +143,8 @@ async def login(
     user.failed_login_attempts = 0
     user.locked_until = None
     user.updated_at = now
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(payload.password)
     raw_token, auth_session = await create_auth_session(session, user, request)
     set_auth_cookies(response, raw_token, auth_session.csrf_token)
     return _status_payload(user, auth_session)
@@ -127,8 +156,9 @@ async def logout(
     context: AuthContext = Depends(require_auth_context),
     session: AsyncSession = Depends(get_session),
 ):
-    await session.delete(context.session)
-    await session.commit()
+    if context.session is not None:
+        await session.delete(context.session)
+        await session.commit()
     clear_auth_cookies(response)
 
 
@@ -137,14 +167,17 @@ async def change_password(
     payload: PasswordChangeRequest,
     request: Request,
     response: Response,
-    context: AuthContext = Depends(require_auth_context),
+    user: AdminUser = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    user = context.user
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="当前密码不正确")
     if verify_password(payload.new_password, user.password_hash):
         raise HTTPException(status_code=400, detail="新密码不能与当前密码相同")
+    try:
+        validate_password_strength(payload.new_password, user.username)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     user.password_hash = hash_password(payload.new_password)
     user.password_changed_at = utcnow()

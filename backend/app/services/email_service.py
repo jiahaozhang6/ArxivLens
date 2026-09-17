@@ -70,7 +70,7 @@ def _build_digest_text(analyses: list[Analysis], base_url: str) -> str:
 
 
 async def _send_message(config: EmailSettings, message: EmailMessage) -> None:
-    password = decrypt_secret(config.encrypted_password)
+    password = decrypt_secret(config.encrypted_password, "smtp")
     await aiosmtplib.send(
         message,
         hostname=config.smtp_host,
@@ -298,7 +298,7 @@ async def send_today_digest() -> dict[str, str | int]:
             raise ValueError("请先在“计划与邮件”中启用邮件摘要")
         if not email.smtp_host or not email.from_email or not email.recipients:
             raise ValueError("请先配置 SMTP 服务器、发件邮箱和至少一个收件邮箱")
-        if email.username and not decrypt_secret(email.encrypted_password):
+        if email.username and not decrypt_secret(email.encrypted_password, "smtp"):
             raise ValueError("请先保存 SMTP 密码或授权码")
 
         timezone = ZoneInfo(schedule.timezone)
@@ -353,7 +353,7 @@ async def send_test_email(email: EmailSettings) -> None:
         not email.username or "@" not in email.username
     ):
         raise ValueError("QQ 邮箱的 SMTP 用户名应填写完整邮箱地址")
-    if email.username and not decrypt_secret(email.encrypted_password):
+    if email.username and not decrypt_secret(email.encrypted_password, "smtp"):
         raise ValueError("SMTP password or authorization code is required")
     message = EmailMessage()
     message["Subject"] = f"{email.subject_prefix} connection test"

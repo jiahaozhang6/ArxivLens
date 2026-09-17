@@ -4,7 +4,12 @@ import getpass
 
 from sqlalchemy import delete, select
 
-from app.auth import hash_password, normalize_username
+from app.auth import (
+    PASSWORD_MIN_LENGTH,
+    hash_password,
+    normalize_username,
+    validate_password_strength,
+)
 from app.database import SessionLocal, close_db, init_db
 from app.models import AdminUser, AuthSession, utcnow
 
@@ -57,12 +62,10 @@ async def _unlock(username: str | None) -> str:
 
 
 def _read_new_password() -> str:
-    password = getpass.getpass("New password (at least 12 characters): ")
+    password = getpass.getpass(f"New password (at least {PASSWORD_MIN_LENGTH} characters): ")
     confirmation = getpass.getpass("Confirm new password: ")
     if password != confirmation:
         raise ValueError("Passwords do not match")
-    if not 12 <= len(password) <= 128:
-        raise ValueError("Password must contain 12 to 128 characters")
     return password
 
 
@@ -70,7 +73,12 @@ async def _run(args) -> str:
     await init_db()
     try:
         if args.command == "reset-password":
-            return await _reset_password(args.username, _read_new_password())
+            password = _read_new_password()
+            user = await _find_user(args.username)
+            if user is None:
+                raise RuntimeError("No administrator account exists. Open the web login page first.")
+            validate_password_strength(password, user.username)
+            return await _reset_password(args.username, password)
         if args.command == "unlock":
             return await _unlock(args.username)
         raise RuntimeError("Unknown command")

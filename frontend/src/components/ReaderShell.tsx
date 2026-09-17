@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LogOut, Settings2 } from 'lucide-react'
+import { BookOpenText, LogOut, Settings2 } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { api, formatDateTime } from '../api'
-import { authQueryKey } from '../auth'
+import { authQueryKey, useAuthStatus } from '../auth'
 import type { SystemStatus } from '../types'
 import { ProjectFooter } from './ProjectFooter'
 
@@ -11,6 +11,8 @@ export function ReaderShell() {
   const [notice, setNotice] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const authQuery = useAuthStatus()
+  const readOnly = authQuery.data?.role === 'guest'
   const statusQuery = useQuery({
     queryKey: ['system-status'],
     queryFn: () => api<SystemStatus>('/system/status'),
@@ -23,6 +25,7 @@ export function ReaderShell() {
       queryClient.setQueryData(authQueryKey, {
         setup_required: false,
         authenticated: false,
+        role: null,
         user: null,
         session_expires_at: null,
       })
@@ -48,15 +51,19 @@ export function ReaderShell() {
                   ? '正在读取同步状态'
                   : '尚未同步'}
           </span>
-          <NavLink to="/admin/daily" className="icon-text-button">
-            <Settings2 size={16} />
-            <span className="reader-action-label">后台管理</span>
-          </NavLink>
+          {readOnly ? (
+            <span className="reader-role-badge"><BookOpenText size={15} /> 访客只读</span>
+          ) : (
+            <NavLink to="/admin/daily" className="icon-text-button">
+              <Settings2 size={16} />
+              <span className="reader-action-label">后台管理</span>
+            </NavLink>
+          )}
           <button className="icon-button reader-logout-button" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending} title="退出登录"><LogOut size={17} /></button>
         </div>
       </header>
 
-      {system && !system.ready && (
+      {system && !system.ready && !readOnly && (
         <div className="reader-setup-banner">
           <span>阅读服务尚未配置完成。</span>
           <NavLink to="/admin/topics">进入后台配置</NavLink>

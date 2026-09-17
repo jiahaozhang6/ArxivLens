@@ -95,7 +95,7 @@ async def update_email(
     for key, value in values.items():
         setattr(email, key, value)
     if payload.password is not None:
-        email.encrypted_password = encrypt_secret(payload.password)
+        email.encrypted_password = encrypt_secret(payload.password, "smtp")
     await session.commit()
     await session.refresh(email)
     return _email_out(email)
@@ -122,7 +122,7 @@ async def test_email(
                 security=payload.security,
                 subject_prefix=payload.subject_prefix,
                 encrypted_password=(
-                    encrypt_secret(payload.password)
+                    encrypt_secret(payload.password, "smtp")
                     if payload.password is not None
                     else saved_email.encrypted_password
                 ),

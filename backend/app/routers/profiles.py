@@ -59,7 +59,7 @@ async def discover_models(
                 status_code=400,
                 detail="Re-enter the API key after changing the protocol or API Base URL",
             )
-        api_key = decrypt_secret(profile.encrypted_api_key) or ""
+        api_key = decrypt_secret(profile.encrypted_api_key, "llm") or ""
     if not api_key:
         raise HTTPException(status_code=400, detail="Enter an API key before fetching models")
 
@@ -88,7 +88,7 @@ async def create_profile(
     session: AsyncSession = Depends(get_session),
 ):
     values = payload.model_dump(exclude={"api_key"})
-    profile = LLMProfile(**values, encrypted_api_key=encrypt_secret(payload.api_key))
+    profile = LLMProfile(**values, encrypted_api_key=encrypt_secret(payload.api_key, "llm"))
     if profile.is_default:
         await session.execute(update(LLMProfile).values(is_default=False))
     session.add(profile)
@@ -114,7 +114,7 @@ async def update_profile(
         raise HTTPException(status_code=404, detail="LLM profile not found")
     values = payload.model_dump(exclude_unset=True)
     if "api_key" in values:
-        profile.encrypted_api_key = encrypt_secret(values.pop("api_key"))
+        profile.encrypted_api_key = encrypt_secret(values.pop("api_key"), "llm")
     if values.get("is_default"):
         await session.execute(
             update(LLMProfile).where(LLMProfile.id != profile_id).values(is_default=False)

@@ -24,7 +24,9 @@ export default function App() {
             <Route index element={<ReaderPage />} />
             <Route path="paper/:paperId" element={<PaperReadingPage />} />
           </Route>
+        </Route>
 
+        <Route element={<AuthGate adminOnly />}>
           <Route path="admin" element={<AppShell />}>
             <Route index element={<Navigate to="/admin/daily" replace />} />
             <Route path="daily" element={<DashboardPage />} />

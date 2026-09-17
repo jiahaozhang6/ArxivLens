@@ -215,7 +215,7 @@ def test_email_connection_uses_current_form_without_saving(client, monkeypatch):
             smtp_host=config.smtp_host,
             smtp_port=config.smtp_port,
             username=config.username,
-            password=decrypt_secret(config.encrypted_password),
+            password=decrypt_secret(config.encrypted_password, "smtp"),
             from_email=config.from_email,
             recipients=config.recipients,
             security=config.security,

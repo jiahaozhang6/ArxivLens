@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Eye, EyeOff, LogIn, ShieldCheck, UserRound } from 'lucide-react'
+import { BookOpenText, Eye, EyeOff, LogIn, ShieldCheck, UserRound } from 'lucide-react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { authQueryKey, useAuthStatus } from '../auth'
@@ -31,6 +31,14 @@ export function AuthPage() {
     onSuccess: (data) => {
       queryClient.setQueryData(authQueryKey, data)
       navigate(destination, { replace: true })
+    },
+    onError: (error: Error) => setFormError(error.message),
+  })
+  const guestMutation = useMutation({
+    mutationFn: () => api<AuthStatus>('/auth/guest', { method: 'POST' }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(authQueryKey, data)
+      navigate('/', { replace: true })
     },
     onError: (error: Error) => setFormError(error.message),
   })
@@ -73,19 +81,34 @@ export function AuthPage() {
           </label>
           <label className="field-stack">
             <span>{setupRequired ? '设置密码' : '密码'}</span>
-            <span className="auth-input-wrap"><input type={showPassword ? 'text' : 'password'} autoComplete={setupRequired ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} maxLength={128} required /><button type="button" className="icon-button" onClick={() => setShowPassword((value) => !value)} title={showPassword ? '隐藏密码' : '显示密码'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
-            {setupRequired && <small className="field-help">至少 12 个字符，建议使用不重复的长密码或密码短语。</small>}
+            <span className="auth-input-wrap"><input type={showPassword ? 'text' : 'password'} autoComplete={setupRequired ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={setupRequired ? 14 : 1} maxLength={128} required /><button type="button" className="icon-button" onClick={() => setShowPassword((value) => !value)} title={showPassword ? '隐藏密码' : '显示密码'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span>
+            {setupRequired && <small className="field-help">至少 14 个字符；推荐使用 20 个字符以上且不重复的密码短语。</small>}
           </label>
           {setupRequired && (
             <label className="field-stack">
               <span>确认密码</span>
-              <span className="auth-input-wrap"><input type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={12} maxLength={128} required /></span>
+              <span className="auth-input-wrap"><input type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={14} maxLength={128} required /></span>
             </label>
           )}
           <button className="primary-button auth-submit" type="submit" disabled={authMutation.isPending || authQuery.isError}>
             {setupRequired ? <ShieldCheck size={17} /> : <LogIn size={17} />}
             {authMutation.isPending ? '正在验证' : setupRequired ? '创建账号并进入' : '登录'}
           </button>
+          {!setupRequired && (
+            <>
+              <div className="auth-divider"><span>或</span></div>
+              <button
+                className="secondary-button auth-guest-submit"
+                type="button"
+                onClick={() => guestMutation.mutate()}
+                disabled={guestMutation.isPending || authQuery.isError}
+              >
+                <BookOpenText size={17} />
+                {guestMutation.isPending ? '正在进入' : '访客只读进入'}
+              </button>
+              <small className="auth-guest-help">无需账号，可查看论文与已有解读，不能修改数据或使用云模型。</small>
+            </>
+          )}
         </form>
 
         <div className="auth-footnote">

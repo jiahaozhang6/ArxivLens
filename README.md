@@ -24,8 +24,8 @@ ArxivLens 是一个可在 Windows 和 Ubuntu 原生运行的 arXiv 论文订阅�
 - 国内云模型：DeepSeek、通义千问、智谱 GLM、Kimi、硅基流动。
 - 国外云模型：OpenAI、Anthropic Claude、Google Gemini，以及自定义 OpenAI-compatible 云 API。
 - 首选模型异常时自动切换：先尝试全局默认模型，再按名称尝试其他已启用配置；定时批处理会暂时冷却故障配置，避免每篇论文重复等待同一故障接口。
-- API 密钥和 SMTP 密码使用 `SECRET_KEY` 加密后存入数据库，前端不会回显。
-- 单管理员账号保护全部科研数据与 API：加盐密码哈希、HttpOnly 会话 Cookie、CSRF 校验、登录失败锁定和会话过期。
+- API 密钥和 SMTP 密码使用按用途隔离、支持轮换的版本化加密后存入数据库，前端不会回显。
+- 管理员账号使用 scrypt 加盐密码哈希保护；访客仅获得签名只读会话，不能修改数据或调用云模型。
 - 所有云模型调用均由服务端管理员鉴权；论文问答默认最多每分钟 8 次、同时只运行 1 个请求，阅读端不提供模型调用按钮。
 - 每日计划、IANA 时区、多收件人邮件摘要、测试邮件和运行日志。
 - 按发现日期、主题、阅读状态、分析状态和关键字筛选；支持星标、人工相关性、标签和个人笔记。
@@ -114,7 +114,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 - 后台管理端：`http://127.0.0.1:5173/#/admin/daily`
 - 局域网设备：将 `127.0.0.1` 替换为启动脚本显示的 LAN IPv4 地址。
 
-首次打开会进入安全初始化页，请自行创建管理员用户名和至少 12 个字符的密码。阅读端与后台端共用同一登录会话。后端和 worker 日志位于 `logs/`，按 `Ctrl+C` 会停止本次启动的进程。
+首次打开会进入安全初始化页，请自行创建管理员用户名和至少 14 个字符的密码。管理员可访问阅读端与后台端；访客入口只能查看论文和已有解读。后端和 worker 日志位于 `logs/`，按 `Ctrl+C` 会停止本次启动的进程。
 
 生产式本机运行需要两个终端：
 
@@ -377,9 +377,10 @@ DATABASE_URL=postgresql+asyncpg://arxiv_user:strong_password@127.0.0.1:5432/arxi
 ## 安全建议
 
 - `.env`、`data/`、`backups/` 和 `logs/` 已被 Git 忽略，不要手动提交。
-- `SECRET_KEY` 用于派生加密密钥。配置云模型或 SMTP 后不可随意更换，否则已存密钥无法解密。
-- 管理员密码使用 PBKDF2-HMAC-SHA256 加盐哈希，原始密码不会写入数据库；不要与邮箱或云模型平台复用密码。
-- 默认会话有效期为 168 小时，连续 5 次密码错误会锁定 15 分钟，可在 `.env` 调整 `AUTH_SESSION_HOURS`、`AUTH_LOGIN_MAX_ATTEMPTS` 和 `AUTH_LOCK_MINUTES`。
+- `SECRET_KEY` 通过 HKDF-SHA256 分别派生 LLM 与 SMTP 加密密钥。轮换时先将旧值写入 `SECRET_KEY_PREVIOUS`，设置新的 `SECRET_KEY`，运行 `python -m app.secret_migration` 后再清空旧值。
+- 管理员密码使用 scrypt 加盐哈希，原始密码不会写入数据库；旧 PBKDF2 哈希会在下次成功登录后自动升级。密码至少 14 个字符，建议使用 20 个字符以上的独立密码短语。
+- 默认会话有效期为 24 小时，并绑定登录时的浏览器 User-Agent；连续 5 次密码错误会锁定 15 分钟，可在 `.env` 调整 `AUTH_SESSION_HOURS`、`AUTH_LOGIN_MAX_ATTEMPTS` 和 `AUTH_LOCK_MINUTES`。
+- 访客会话由服务端签名且仅允许读取公开论文字段和已有解读。私人笔记、标签、收藏、已读状态、配置、任务与云模型接口均由后端拒绝访问。
 - 只有通过 HTTPS 访问时才设置 `AUTH_COOKIE_SECURE=true`；在纯 HTTP 本机开发环境启用后，浏览器不会发送登录 Cookie。
 - 默认只监听 `127.0.0.1`。如果把 `API_HOST` 改为 `0.0.0.0`，必须同时使用防火墙、反向代理 HTTPS 和访问控制；当前项目不内置多用户登录系统。
 - 仅配置可信云平台 URL。自定义 API 会接收论文文本和研究主题说明。
