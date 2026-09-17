@@ -53,12 +53,12 @@ export function AuthPage() {
       <section className="auth-panel" aria-labelledby="auth-title">
         <div className="auth-brand-row">
           <span className="brand-mark" aria-hidden="true">aX</span>
-          <span><strong>ArxivLens</strong><small>科研工作空间</small></span>
+          <span><strong>ArxivLens</strong><small>张家豪的科研工作空间</small></span>
         </div>
         <div className="auth-heading">
           <span className="auth-heading-icon">{setupRequired ? <ShieldCheck size={22} /> : <LogIn size={22} />}</span>
           <div>
-            <h1 id="auth-title">{setupRequired ? '创建管理员账号' : '登录科研工作空间'}</h1>
+            <h1 id="auth-title">{setupRequired ? '创建管理员账号' : '登录张家豪的科研工作空间'}</h1>
             <p>{setupRequired ? '首次使用需要建立唯一管理员。账号用于保护论文、笔记和云模型配置。' : '请输入管理员账号，继续访问阅读端或后台管理。'}</p>
           </div>
         </div>
