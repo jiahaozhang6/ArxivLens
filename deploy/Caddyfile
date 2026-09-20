@@ -1,17 +1,20 @@
 {
-	default_sni paper.jiahaozhang.cn
+	default_sni papers.jiahaozhang.cn
 	auto_https disable_redirects
 	skip_install_trust
 }
 
-https://paper.jiahaozhang.cn {
+https://papers.jiahaozhang.cn {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8000
 }
 
+https://paper.jiahaozhang.cn {
+	redir https://papers.jiahaozhang.cn{uri} permanent
+}
+
 https://paper.jiahaozhang.cn:8888 {
-	encode zstd gzip
-	reverse_proxy 127.0.0.1:8000
+	redir https://papers.jiahaozhang.cn{uri} permanent
 }
 
 https://58.87.103.33:8888 {

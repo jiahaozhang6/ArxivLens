@@ -2,7 +2,7 @@
 
 ArxivLens 是一个可在 Windows 和 Ubuntu 原生运行的 arXiv 论文订阅、云端 LLM 解读与科研阅读管理系统。它每天按主题检索论文，保存元数据和多次分析结果，在浏览器中按日期筛选，也可以通过 SMTP 发送当日摘要。
 
-> **在线 Demo：** [打开 ArxivLens 每日科研论文助手](https://58.87.103.33:8888/)
+> **在线 Demo：** [打开 ArxivLens 每日科研论文助手](https://papers.jiahaozhang.cn/)
 
 本项目明确采用以下运行方式：
 
@@ -209,7 +209,7 @@ sudo journalctl -u arxiv-digest-api -u arxiv-digest-worker -f
 sudo systemctl restart arxiv-digest-api arxiv-digest-worker
 ```
 
-公网部署时让 API 继续监听 `127.0.0.1:8000`，由 Caddy 提供 HTTPS。仓库中的 `deploy/Caddyfile` 关闭了 80 端口自动跳转，并同时提供标准 443 主入口和 8888 备用入口。当前部署地址为 `https://paper.jiahaozhang.cn/`，备用地址为 `https://paper.jiahaozhang.cn:8888/`；其他服务器使用前应替换其中的域名和 IP。
+公网部署时让 API 继续监听 `127.0.0.1:8000`，由 Caddy 提供 HTTPS。仓库中的 `deploy/Caddyfile` 关闭了 80 端口自动跳转，标准 443 主入口为 `https://papers.jiahaozhang.cn/`，IP 备用入口为 `https://58.87.103.33:8888/`；其他服务器使用前应替换其中的域名和 IP。
 
 服务器与云安全组需要开放 SSH、`443/tcp` 和 `8888/tcp`，不需要开放 80。域名入口由 Caddy 自动申请和续期公共证书；IP 形式的 `https://<SERVER-IP>:8888/` 仅作为内部 CA 回退入口，客户端需要信任 `deploy/arxiv-lens-root-ca.crt`。启用 HTTPS 后设置 `AUTH_COOKIE_SECURE=true`，并把 `CORS_ORIGINS` 和后台的“站点公开地址”更新为实际域名。
 

@@ -12,8 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_session
-from app.models import Analysis, AnalysisStatus, Paper, Topic, TopicPaper, utcnow
-from app.services.settings_service import get_schedule_settings
+from app.models import Analysis, AnalysisStatus, Paper, Topic, TopicPaper
 
 router = APIRouter(tags=["rss"])
 
@@ -82,18 +81,16 @@ def _build_rss(
         {"href": feed_url, "rel": "self", "type": "application/rss+xml"},
     )
     item_data = [(paper, _latest_completed_analysis(paper)) for paper in papers]
-    build_time = max(
-        (
+    if item_data:
+        build_time = max(
             analysis.completed_at
             if analysis and analysis.completed_at
             else paper.first_seen_at
             for paper, analysis in item_data
-        ),
-        default=utcnow(),
-    )
-    ET.SubElement(channel, "lastBuildDate").text = format_datetime(
-        build_time.astimezone(UTC), usegmt=True
-    )
+        )
+        ET.SubElement(channel, "lastBuildDate").text = format_datetime(
+            build_time.astimezone(UTC), usegmt=True
+        )
 
     for paper, analysis in item_data:
         detail_url = f"{site_url.rstrip('/')}/#/paper/{paper.id}"
@@ -121,14 +118,13 @@ def _build_rss(
     return ET.tostring(rss, encoding="utf-8", xml_declaration=True)
 
 
-@router.get("/rss.xml", response_class=Response)
+@router.api_route("/rss.xml", methods=["GET", "HEAD"], response_class=Response)
 async def read_rss_feed(
     request: Request,
     topic_id: int | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ):
-    schedule = await get_schedule_settings(session)
     topic = await session.get(Topic, topic_id) if topic_id is not None else None
     if topic_id is not None and topic is None:
         raise HTTPException(status_code=404, detail="Topic not found")
@@ -149,13 +145,15 @@ async def read_rss_feed(
     xml = _build_rss(
         papers,
         title=title,
-        site_url=schedule.public_base_url.rstrip("/"),
+        site_url=str(request.base_url).rstrip("/"),
         feed_url=feed_url,
     )
     etag = f'"{hashlib.sha256(xml).hexdigest()}"'
     cache_headers = {"Cache-Control": "public, max-age=300", "ETag": etag}
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=cache_headers)
+    if request.method == "HEAD":
+        return Response(status_code=200, media_type="application/rss+xml", headers=cache_headers)
     return Response(
         content=xml,
         media_type="application/rss+xml",

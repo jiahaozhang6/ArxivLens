@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { api, formatDate, localDateString, toQuery } from '../api'
 import { PaperDrawer } from '../components/PaperDrawer'
+import { PaperCalendar } from '../components/PaperCalendar'
 import type {
   NetworkTimeStatus,
   Paper,
@@ -77,7 +78,7 @@ export function LibraryPage() {
   })
   const datesQuery = useQuery({
     queryKey: ['paper-dates', topicId],
-    queryFn: () => api<PaperDatesResponse>('/papers/dates' + toQuery({ topic_id: topicId, limit: 365 })),
+    queryFn: () => api<PaperDatesResponse>('/papers/dates' + toQuery({ topic_id: topicId, limit: 730 })),
   })
   const papersQuery = useQuery({
     queryKey: ['papers', 'library', day, topicId, state, analysisStatus, sort, debouncedSearch, page],
@@ -171,10 +172,10 @@ export function LibraryPage() {
           <Database size={17} />
           <strong>收录日期</strong>
         </div>
-        <label className="archive-calendar">
+        <div className="archive-calendar">
           <span>选择日期</span>
-          <input type="date" value={day} max={today} onChange={(event) => changeFilter(setDay, event.target.value)} />
-        </label>
+          <PaperCalendar value={day} today={today} dates={dateItems} onSelect={(value) => changeFilter(setDay, value)} />
+        </div>
         <button className={'archive-date ' + (!day ? 'active' : '')} onClick={() => changeFilter(setDay, '')}>
           <span>全部论文</span>
           <small>全库</small>

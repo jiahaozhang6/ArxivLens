@@ -83,7 +83,13 @@ def test_rss_feed_is_public_filtered_and_excludes_private_fields():
             assert "must-not-appear-in-rss" not in response.text
             assert "private-rss-tag" not in response.text
             assert f"/#/paper/{paper_id}" in response.text
+            assert f"http://testserver/#/paper/{paper_id}" in response.text
             assert "\x01" not in response.text
+
+            head = anonymous.head(f"/rss.xml?topic_id={topic_id}&limit=10")
+            assert head.status_code == 200
+            assert head.headers["etag"] == response.headers["etag"]
+            assert not head.content
 
             cached = anonymous.get(
                 f"/rss.xml?topic_id={topic_id}&limit=10",

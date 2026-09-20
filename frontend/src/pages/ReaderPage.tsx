@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   BookOpenCheck,
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -17,7 +16,8 @@ import {
 } from 'lucide-react'
 import { api, formatDate, localDateString, toQuery } from '../api'
 import { useAuthStatus } from '../auth'
-import type { NetworkTimeStatus, Paper, PaperListResponse, Topic } from '../types'
+import { PaperCalendar } from '../components/PaperCalendar'
+import type { NetworkTimeStatus, Paper, PaperDatesResponse, PaperListResponse, Topic } from '../types'
 
 type ReadingMode = 'unread' | 'all' | 'starred' | 'relevant'
 
@@ -155,6 +155,11 @@ export function ReaderPage() {
     staleTime: 60_000,
   })
   const topicsQuery = useQuery({ queryKey: ['topics'], queryFn: () => api<Topic[]>('/topics') })
+  const datesQuery = useQuery({
+    queryKey: ['paper-dates', topicId],
+    queryFn: () => api<PaperDatesResponse>('/papers/dates' + toQuery({ topic_id: topicId, limit: 730 })),
+    refetchInterval: 60_000,
+  })
   const correctedToday = timeQuery.data?.current_time
     ? localDateString(new Date(timeQuery.data.current_time))
     : initialToday
@@ -220,7 +225,7 @@ export function ReaderPage() {
       <section className="reader-toolbar" aria-label="阅读筛选">
         <div className="reader-date-control">
           <button className="icon-button" onClick={() => changeDay(shiftDate(day, -1))} title="前一天"><ChevronLeft size={18} /></button>
-          <label><CalendarDays size={16} /><input type="date" value={day} max={correctedToday} onChange={(event) => changeDay(event.target.value)} /></label>
+          <PaperCalendar value={day} today={correctedToday} dates={datesQuery.data?.items ?? []} onSelect={changeDay} />
           <button className="icon-button" onClick={() => changeDay(shiftDate(day, 1))} disabled={day >= correctedToday} title="后一天"><ChevronRight size={18} /></button>
         </div>
         <label className="search-field reader-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="在当日论文中搜索" /></label>

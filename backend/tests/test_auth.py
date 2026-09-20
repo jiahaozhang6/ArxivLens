@@ -138,6 +138,7 @@ def test_guest_session_is_read_only_and_hides_private_fields(client):
             assert status_response.json()["role"] == "guest"
 
             assert guest.get("/api/papers").status_code == 200
+            assert guest.get("/api/papers/dates").status_code == 200
             assert guest.get("/api/topics").status_code == 200
             assert guest.get("/api/system/status").status_code == 200
             detail = guest.get(f"/api/papers/{paper_id}")
