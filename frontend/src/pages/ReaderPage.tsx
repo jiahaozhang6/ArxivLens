@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleHelp,
   Search,
+  Rss,
   Sparkles,
   Star,
   ThumbsDown,
@@ -223,10 +224,13 @@ export function ReaderPage() {
           <button className="icon-button" onClick={() => changeDay(shiftDate(day, 1))} disabled={day >= correctedToday} title="后一天"><ChevronRight size={18} /></button>
         </div>
         <label className="search-field reader-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="在当日论文中搜索" /></label>
-        <select value={topicId} onChange={(event) => setTopicId(event.target.value)} aria-label="研究主题">
-          <option value="">全部研究主题</option>
-          {topicsQuery.data?.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
-        </select>
+        <div className="reader-topic-control">
+          <select value={topicId} onChange={(event) => setTopicId(event.target.value)} aria-label="研究主题">
+            <option value="">全部研究主题</option>
+            {topicsQuery.data?.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+          </select>
+          <a className="icon-button" href={`/rss.xml${topicId ? `?topic_id=${topicId}` : ''}`} target="_blank" rel="noreferrer" title={topicId ? '订阅当前研究主题' : '订阅全部研究主题'} aria-label={topicId ? '订阅当前研究主题 RSS' : '订阅全部研究主题 RSS'}><Rss size={17} /></a>
+        </div>
       </section>
 
       <div className="reader-layout">

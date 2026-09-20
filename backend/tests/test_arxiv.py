@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from functools import partial
 from types import SimpleNamespace
 
@@ -187,8 +188,15 @@ async def test_fetch_uses_rss_primary_without_calling_atom(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_daily_rss_filters_cross_list(monkeypatch, tmp_path):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = cls(2026, 9, 16, tzinfo=UTC)
+            return value.astimezone(tz) if tz else value.replace(tzinfo=None)
+
     monkeypatch.setattr(arxiv_service, "_rss_cache_dir", tmp_path)
     monkeypatch.setattr(arxiv_service, "get_settings", lambda: _settings())
+    monkeypatch.setattr(arxiv_service, "datetime", FixedDatetime)
 
     class FakeClient:
         async def get(self, *_args, **_kwargs):

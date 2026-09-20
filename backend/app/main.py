@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import SessionLocal, close_db, init_db
-from app.routers import auth, chats, jobs, papers, profiles, settings, system, topics
+from app.routers import auth, chats, feeds, jobs, papers, profiles, settings, system, topics
 from app.services.paper_chat import recover_interrupted_chats
 from app.services.pipeline import recover_interrupted_runs
 from app.services.settings_service import ensure_default_settings
@@ -45,6 +45,7 @@ app.include_router(topics.router)
 app.include_router(profiles.router)
 app.include_router(settings.router)
 app.include_router(jobs.router)
+app.include_router(feeds.router)
 
 
 @app.middleware("http")

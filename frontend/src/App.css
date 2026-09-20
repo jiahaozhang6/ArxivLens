@@ -2042,6 +2042,25 @@ textarea::placeholder {
   border-radius: 6px;
 }
 
+.reader-topic-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 6px;
+}
+
+.reader-topic-control select {
+  min-width: 0;
+  width: 100%;
+}
+
+.reader-topic-control .icon-button {
+  width: 38px;
+  height: 38px;
+  color: #8c4e19;
+  text-decoration: none;
+}
+
 .reader-date-control {
   display: flex;
   align-items: center;
@@ -3421,7 +3440,7 @@ textarea::placeholder {
     grid-template-columns: auto minmax(220px, 1fr);
   }
 
-  .reader-toolbar > select {
+  .reader-topic-control {
     grid-column: 1 / -1;
   }
 
@@ -3997,7 +4016,7 @@ textarea::placeholder {
     grid-template-columns: 1fr;
   }
 
-  .reader-toolbar > select {
+  .reader-topic-control {
     grid-column: auto;
   }
 
