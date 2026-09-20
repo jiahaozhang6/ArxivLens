@@ -58,6 +58,8 @@ async def add_security_headers(request, call_next):
     response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store"
     if settings_config.auth_cookie_secure:
         response.headers.setdefault(
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains"

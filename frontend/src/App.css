@@ -2145,6 +2145,10 @@ textarea::placeholder {
 
 .paper-calendar-day {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
   color: #69747d;
   background: transparent;
   border: 0;
@@ -2157,14 +2161,11 @@ textarea::placeholder {
   font-weight: 800;
 }
 
-.paper-calendar-day.has-papers::after {
-  position: absolute;
-  bottom: 2px;
-  width: 3px;
-  height: 3px;
-  background: var(--accent);
-  border-radius: 50%;
-  content: '';
+.paper-calendar-day small {
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
 }
 
 .paper-calendar-day:hover:not(:disabled) {
@@ -2177,8 +2178,8 @@ textarea::placeholder {
   font-weight: 800;
 }
 
-.paper-calendar-day.selected::after {
-  background: #fff;
+.paper-calendar-day.selected small {
+  color: #fff;
 }
 
 .paper-calendar-day.today:not(.selected) {
@@ -2201,13 +2202,6 @@ textarea::placeholder {
   align-items: center;
   gap: 5px;
   color: var(--muted);
-}
-
-.paper-calendar-footer i {
-  width: 5px;
-  height: 5px;
-  background: var(--accent);
-  border-radius: 50%;
 }
 
 .paper-calendar-footer button {

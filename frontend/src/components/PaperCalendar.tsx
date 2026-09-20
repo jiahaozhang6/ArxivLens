@@ -80,11 +80,11 @@ export function PaperCalendar({ value, today, dates, onSelect }: PaperCalendarPr
                 aria-current={date === today ? 'date' : undefined}
                 aria-pressed={date === value}
                 onClick={() => { onSelect(date); setOpen(false) }}
-              >{day}</button>
+              ><span>{day}</span>{papers > 0 && <small aria-hidden="true">{papers}</small>}</button>
             })}
           </div>
           <div className="paper-calendar-footer">
-            <span><i /> 有论文</span>
+            <span>加粗日期下方数字为论文篇数</span>
             <button type="button" onClick={() => { onSelect(today); setOpen(false) }}>今天</button>
           </div>
         </div>
